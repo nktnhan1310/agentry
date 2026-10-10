@@ -62,3 +62,12 @@ test('telegram parsing and cards', () => {
   assert.deepEqual(buttons, [`diff:${t.id}`, `approve:${t.id}`, `changes:${t.id}`, `reject:${t.id}`]);
   assert.ok(c.text.length <= 4000);
 });
+
+test('ollama/ models route claude to local Ollama', async () => {
+  const { localModel } = await import('../hub/engines.mjs');
+  assert.equal(localModel('opus'), null);
+  const l = localModel('ollama/qwen3:8b-32k');
+  assert.equal(l.model, 'qwen3:8b-32k');
+  assert.equal(l.env.ANTHROPIC_BASE_URL, 'http://localhost:11434');
+  assert.equal(l.env.ANTHROPIC_DEFAULT_HAIKU_MODEL, 'qwen3:8b-32k');
+});

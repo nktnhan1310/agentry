@@ -33,13 +33,27 @@ function claudeBin(args) {
   return /\.m?js$/.test(bin) ? [process.execPath, [bin, ...args]] : [bin, args];
 }
 
+// `ollama/<model>` runs Claude Code against local Ollama's Anthropic-compatible API (free, no budget cap).
+// All model aliases map to it, since Claude Code also makes background haiku/sonnet calls.
+export function localModel(model) {
+  if (!model?.startsWith('ollama/')) return null;
+  const m = model.slice('ollama/'.length);
+  return { model: m, env: {
+    ANTHROPIC_BASE_URL: process.env.KIT_OLLAMA_URL || 'http://localhost:11434',
+    ANTHROPIC_AUTH_TOKEN: 'ollama', ANTHROPIC_API_KEY: '',
+    ANTHROPIC_DEFAULT_OPUS_MODEL: m, ANTHROPIC_DEFAULT_SONNET_MODEL: m, ANTHROPIC_DEFAULT_HAIKU_MODEL: m,
+  } };
+}
+
 async function claude(prompt, { cwd, model, write, mode, agent, addDirs, log, timeoutMin, ticketId, budgetUsd }) {
-  const [cmd, args] = claudeBin(claudeArgs({ mode: mode || (write ? 'write' : 'read'), model, budgetUsd, agent, addDirs }));
+  const local = localModel(model);
+  const [cmd, args] = claudeBin(claudeArgs({ mode: mode || (write ? 'write' : 'read'), model: local ? local.model : model,
+    budgetUsd: local ? undefined : budgetUsd, agent, addDirs }));
   // Prompt via stdin: no shell quoting issues, no command-line length limit.
-  const r = await run(cmd, args, { cwd, log, timeoutMin, ticketId, input: prompt });
+  const r = await run(cmd, args, { cwd, log, timeoutMin, ticketId, input: prompt, env: local?.env });
   let j = {};
   try { j = JSON.parse(r.out.slice(r.out.indexOf('{'))); } catch { /* non-JSON failure */ }
-  return { ok: r.code === 0 && !j.is_error, text: (j.result || '').trim(), tail: r.tail, costUsd: j.total_cost_usd || 0 };
+  return { ok: r.code === 0 && !j.is_error, text: (j.result || '').trim(), tail: r.tail, costUsd: local ? 0 : j.total_cost_usd || 0 };
 }
 
 async function opencode(prompt, { cwd, model, log, timeoutMin, ticketId, agent = 'kit-worker' }) {
