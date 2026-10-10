@@ -23,6 +23,17 @@ npm link                                 # optional: `kit` command on PATH (Node
 ```
 Windows: double-click `kit-ui.cmd` to open the control panel.
 
+## Start a new project
+From any Claude Code or OpenCode session (any folder): `/kit-new <your idea>`. The agent then:
+1. asks up to 3 questions;
+2. scaffolds with the stack's official tool;
+3. runs `kit new <dir>` (git init + sync + pack detection);
+4. writes `.wiki/arch.md` and `.wiki/plans/mvp.md` (the MVP as tickets);
+5. commits once tests pass;
+6. offers to register the project with the hub.
+
+Existing repo: `/kit-sync` in it, then `kit hub repo add .`.
+
 ## Use
 ```bash
 node bin/kit.mjs install-global          # once: adds /kit-sync and /ticket to Claude Code + OpenCode

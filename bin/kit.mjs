@@ -5,6 +5,7 @@ import { doctor } from '../lib/doctor.mjs';
 import { installGlobal } from '../lib/global.mjs';
 import { hub } from '../hub/cli.mjs';
 import { lint } from '../lib/lint.mjs';
+import { newProject } from '../lib/new.mjs';
 import { loadConfig, report, sync } from '../lib/sync.mjs';
 
 const BOOL = new Set(['dry', 'force', 'help', 'quick', 'backlog', 'no-open']);
@@ -22,13 +23,14 @@ const HELP = `agentry — portable agents/skills/commands for Claude Code, OpenC
 
   kit sync [repo] [--dry] [--force] [--packs a,b] [--tools claude,opencode,codex]
       Install/update kit files. Unmodified kit files are updated, local edits are kept.
+  kit new <dir> [--packs a,b]  git init + first sync (run after the stack's scaffolder)
   kit diff [repo]        Same as sync --dry
   kit doctor [repo]      Check budgets, drift, wiki health, delegate engine
   kit detect [repo]      Show which language packs would be installed
   kit lint               Validate kit sources against token budgets
   kit ui                 Open the local control panel (tickets, plans, diffs, repos, kit, settings)
   kit hub …             Local ticket loop + Telegram control (kit hub help)
-  kit install-global     Add /kit-sync to ~/.claude/commands and ~/.config/opencode/commands
+  kit install-global [--projects D:/projects]  Add /kit-sync, /kit-new, /ticket to Claude Code + OpenCode
 
 Repo overrides: .kit/config.json (deep-merged over kit.config.json), .kit/local/{agents,commands,skills,hooks}/`;
 
@@ -53,9 +55,10 @@ try {
       if (out !== 'lint: ok') process.exitCode = 1;
       break;
     }
+    case 'new': console.log(newProject(pos[0], flags)); break;
     case 'ui': { console.log(await hub(['ui'], flags)); break; }
     case 'hub': { const out = await hub(pos, flags); if (out) console.log(out); break; }
-    case 'install-global': console.log(installGlobal()); break;
+    case 'install-global': console.log(installGlobal({ projects: flags.projects })); break;
     default: console.log(HELP);
   }
 } catch (e) {
