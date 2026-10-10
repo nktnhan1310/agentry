@@ -1,0 +1,36 @@
+{
+  "version": "0.1.0",
+  "tools": ["claude", "opencode"],
+  "delegate": { "engine": "opencode", "model": "", "timeoutMin": 20, "opencodeAgent": "kit-worker" },
+  "models": { "opencode": { "haiku": "", "sonnet": "", "opus": "" } },
+  "budgets": {
+    "rootMdLines": 10,
+    "descChars": 200,
+    "agentLines": 40,
+    "skillLines": 150,
+    "packLines": 80,
+    "commandLines": 15,
+    "wikiIndexLines": 80,
+    "wikiPageLines": 200,
+    "wikiLogLines": 200
+  },
+  "safety": {
+    "denyBash": ["git push*", "git commit*", "git reset --hard*", "git clean*", "rm -rf*", "Remove-Item*-Recurse*"]
+  },
+  "detect": {
+    "maxDepth": 3,
+    "ignoreDirs": ["node_modules", ".git", "bin", "obj", "dist", "build", "out", ".next", ".venv", "venv", "__pycache__", "coverage", ".kit", ".claude", ".opencode", ".agents", ".wiki"]
+  },
+  "packs": {
+    "typescript": { "files": ["tsconfig.json"] },
+    "react": { "deps": ["react"] },
+    "nextjs": { "deps": ["next"], "files": ["next.config.*"] },
+    "dotnet": { "files": ["*.csproj", "*.sln", "*.slnx"] },
+    "sql": {
+      "files": ["*.sql", "*.sqlproj", "**/Migrations/*.cs"],
+      "deps": ["microsoft.entityframeworkcore", "dapper", "npgsql", "pg", "mssql", "prisma", "drizzle-orm", "sqlalchemy", "psycopg", "psycopg2", "asyncpg"]
+    },
+    "python": { "files": ["pyproject.toml", "requirements*.txt", "setup.py", "Pipfile"] },
+    "supabase": { "files": ["supabase/config.toml"], "deps": ["@supabase/supabase-js", "@supabase/ssr", "supabase"] }
+  }
+}

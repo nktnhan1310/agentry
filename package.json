@@ -1,0 +1,15 @@
+{
+  "name": "agentry",
+  "version": "0.1.0",
+  "description": "Portable, token-lean agents/skills/commands for Claude Code, OpenCode and Codex, synced into any repo.",
+  "license": "MIT",
+  "repository": "github:nktnhan1310/agentry",
+  "type": "module",
+  "bin": { "kit": "bin/kit.mjs", "agentry": "bin/kit.mjs" },
+  "scripts": {
+    "lint": "node bin/kit.mjs lint",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "engines": { "node": ">=20" },
+  "files": ["bin", "lib", "adapters", "core", "packs", "hub", "kit.config.json"]
+}

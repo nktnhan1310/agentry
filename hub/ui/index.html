@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agentry hub</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #fff; --sunken: #f0f2f5; --line: #e2e5ea; --text: #1d2330; --muted: #6a7282; --accent: #3b5bdb; --accent-ink: #fff;
+  --ok: #2b8a3e; --warn: #c27c0e; --bad: #c92a2a; --info: #1971c2; --violet: #7048e8;
+  --add-bg: #e6f6ea; --del-bg: #fdecec; --hunk: #6741d9;
+  --radius: 8px; --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111318; --panel: #181b22; --sunken: #20242d; --line: #2b303b; --text: #e3e6ec; --muted: #8f97a6; --accent: #748ffc; --accent-ink: #0d1020;
+    --ok: #51cf66; --warn: #fcc419; --bad: #ff6b6b; --info: #4dabf7; --violet: #9775fa; --add-bg: #12301b; --del-bg: #3a1618; --hunk: #b197fc; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 5px 11px; cursor: pointer; white-space: nowrap; }
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.danger { color: var(--bad); }
+button.small { padding: 2px 8px; font-size: 12px; }
+button:disabled { opacity: .5; cursor: default; }
+input, select, textarea { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 6px 8px; width: 100%; }
+textarea { font-family: var(--mono); font-size: 12.5px; resize: vertical; }
+label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+pre { margin: 0; font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }
+code { font-family: var(--mono); font-size: 12.5px; }
+h2 { font-size: 17px; margin: 0; } h3 { font-size: 13px; margin: 18px 0 8px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+
+header { display: flex; align-items: center; gap: 14px; padding: 10px 18px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+header .brand { font-weight: 650; }
+nav { display: flex; gap: 2px; }
+nav a { padding: 5px 10px; border-radius: 6px; color: var(--muted); }
+nav a.on { background: var(--sunken); color: var(--text); text-decoration: none; }
+.grow { flex: 1; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--muted); margin-right: 6px; }
+.dot.on { background: var(--ok); } .dot.paused { background: var(--warn); }
+main { padding: 16px 18px 40px; max-width: 1500px; margin: 0 auto; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+.muted { color: var(--muted); } .small { font-size: 12px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.split { display: grid; grid-template-columns: 300px 1fr; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+
+/* workflow strip */
+.flow { display: flex; align-items: stretch; gap: 0; overflow-x: auto; margin-bottom: 16px; }
+.step { flex: 1; min-width: 104px; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); position: relative; }
+.step + .step { border-left: none; }
+.step:first-child { border-radius: var(--radius) 0 0 var(--radius); } .step:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.step b { display: block; font-size: 12.5px; } .step span { font-size: 11.5px; color: var(--muted); }
+.step.claude { box-shadow: inset 0 3px 0 var(--violet); } .step.opencode { box-shadow: inset 0 3px 0 var(--info); }
+.step.shell { box-shadow: inset 0 3px 0 var(--muted); } .step.human { box-shadow: inset 0 3px 0 var(--warn); }
+.step.done { background: color-mix(in srgb, var(--ok) 9%, var(--panel)); }
+.step.now { background: color-mix(in srgb, var(--accent) 16%, var(--panel)); }
+.step.now b::after { content: " ●"; color: var(--accent); animation: pulse 1.2s infinite; }
+.step.stuck { background: color-mix(in srgb, var(--bad) 12%, var(--panel)); }
+.step.skip { opacity: .45; }
+@keyframes pulse { 50% { opacity: .2; } }
+
+/* board */
+.cols { display: grid; grid-template-columns: repeat(5, minmax(210px, 1fr)); gap: 12px; overflow-x: auto; }
+@media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+.col h4 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; display: flex; justify-content: space-between; }
+.card { display: block; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 9px 10px; margin-bottom: 8px; color: var(--text); }
+.card:hover { border-color: var(--accent); text-decoration: none; }
+.card .t { font-weight: 550; margin: 3px 0; }
+.badge { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--sunken); color: var(--muted); border: 1px solid var(--line); }
+.s-running { color: var(--accent); } .s-review, .s-needs_info { color: var(--warn); } .s-failed { color: var(--bad); }
+.s-pr_open, .s-done { color: var(--ok); } .s-approved { color: var(--info); }
+.b-ok { color: var(--ok); } .b-modified { color: var(--warn); } .b-missing, .b-over { color: var(--bad); }
+
+/* ticket */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: 14px 0 12px; flex-wrap: wrap; }
+.tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); padding: 7px 12px; }
+.tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+.diff { font-family: var(--mono); font-size: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow-x: auto; }
+.diff div { white-space: pre; padding: 0 10px; min-height: 17px; }
+.diff .add { background: var(--add-bg); } .diff .del { background: var(--del-bg); } .diff .hunk { color: var(--hunk); }
+.diff .file { background: var(--sunken); font-weight: 600; padding: 5px 10px; border-top: 1px solid var(--line); }
+.box { background: var(--sunken); border-radius: 6px; padding: 10px 12px; }
+.logbox { background: #0e1117; color: #d0d6e0; border-radius: var(--radius); padding: 10px 12px; max-height: 65vh; overflow: auto; }
+.history div { padding: 3px 0; border-bottom: 1px dashed var(--line); font-size: 12.5px; }
+.err { border-left: 3px solid var(--bad); }
+
+/* lists */
+.list a { display: block; padding: 6px 9px; border-radius: 6px; color: var(--text); }
+.list a.on, .list a:hover { background: var(--sunken); text-decoration: none; }
+.list .grp { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 12px 9px 4px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 11.5px; color: var(--muted); font-weight: 500; }
+
+dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text); width: min(620px, 94vw); padding: 18px; }
+dialog::backdrop { background: rgba(0,0,0,.35); }
+#toast { position: fixed; bottom: 18px; right: 18px; display: flex; flex-direction: column; gap: 6px; z-index: 20; }
+#toast div { background: var(--text); color: var(--bg); padding: 8px 12px; border-radius: 6px; max-width: 480px; white-space: pre-wrap; font-size: 13px; }
+#toast div.e { background: var(--bad); color: #fff; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 14px; }
+@media (max-width: 700px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">⚙ agentry hub</span>
+  <nav id="nav">
+    <a href="#/board" data-v="board">Board</a><a href="#/repos" data-v="repos">Repos</a><a href="#/kit" data-v="kit">Kit</a><a href="#/settings" data-v="settings">Settings</a>
+  </nav>
+  <span class="grow"></span>
+  <span id="loop" class="small muted"></span>
+  <button id="loopBtn" class="small"></button>
+  <button class="primary" onclick="newTicket()">+ New ticket</button>
+</header>
+<main id="view"></main>
+<div id="toast"></div>
+
+<dialog id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const js = (v) => esc(JSON.stringify(v));
+const esc = (s = '') => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const ago = (t) => { if (!t) return ''; const s = (Date.now() - new Date(t)) / 1000; return s < 60 ? 'just now' : s < 3600 ? `${s / 60 | 0}m ago` : s < 86400 ? `${s / 3600 | 0}h ago` : `${s / 86400 | 0}d ago`; };
+const ICON = { backlog: '📥', ready: '⏳', running: '⚙️', needs_info: '❓', review: '👀', approved: '🚀', pr_open: '🔗', failed: '💥', rejected: '🗑', done: '✅' };
+
+async function api(method, path, body) {
+  const res = await fetch(`/api/${path}`, { method, headers: method === 'GET' ? {} : { 'content-type': 'application/json', 'x-kit-ui': '1' }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const j = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+  if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+  return j;
+}
+function toast(msg, isErr) {
+  const d = document.createElement('div'); d.textContent = msg; if (isErr) d.className = 'e';
+  $('#toast').append(d); setTimeout(() => d.remove(), isErr ? 7000 : 3000);
+}
+const guard = (fn) => async (...a) => { try { return await fn(...a); } catch (e) { toast(e.message, true); } };
+
+let S = null;            // /api/state
+let page = { v: 'board' };
+let timer = null;
+
+// ---------------- workflow strip ----------------
+function stages(cfg) {
+  const e = cfg.engines;
+  const m = (x) => `${x.tool}${x.model ? ` · ${x.model}` : ''}`;
+  return [
+    { k: 'setup', n: 'Setup', d: 'install deps', c: 'shell' },
+    { k: 'plan', n: 'Plan', d: m(e.plan), c: e.plan.tool },
+    { k: 'code', n: 'Code', d: m(e.code), c: e.code.tool },
+    { k: 'verify', n: 'Verify', d: 'your build/tests', c: 'shell' },
+    { k: 'review', n: 'Review', d: `${m(e.review)} · skip <${cfg.review.skipUnderLines} lines`, c: e.review.tool },
+    { k: 'commit', n: 'Commit', d: 'local branch only', c: 'shell' },
+    { k: 'human', n: 'You review', d: 'test the worktree', c: 'human' },
+    { k: 'pr', n: 'Push + PR', d: 'after you approve', c: 'human' },
+  ];
+}
+function flow(cfg, t) {
+  const st = stages(cfg);
+  const idx = (k) => st.findIndex((s) => s.k === k);
+  let now = -1, doneUpTo = -1, stuck = -1;
+  if (t) {
+    if (t.status === 'running') { now = Math.max(0, idx(t.stage || 'setup')); doneUpTo = now - 1; }
+    else if (t.status === 'review') { now = idx('human'); doneUpTo = now - 1; }
+    else if (t.status === 'approved') { now = idx('pr'); doneUpTo = now - 1; }
+    else if (['pr_open', 'done'].includes(t.status)) doneUpTo = st.length - 1;
+    else if (t.status === 'needs_info') { stuck = idx('plan'); doneUpTo = stuck - 1; }
+    else if (t.status === 'failed') { const h = (t.history || []).map((x) => x.text).reverse().find((x) => /^(verify|plan|code|review|setup|commit)/.test(x)) || ''; stuck = Math.max(0, idx((h.match(/^(\w+)/) || [])[1])); doneUpTo = stuck - 1; }
+  }
+  return `<div class="flow">${st.map((s, i) => {
+    const cls = [s.c, i === now ? 'now' : '', i <= doneUpTo ? 'done' : '', i === stuck ? 'stuck' : '', t && t.mode === 'quick' && s.k === 'plan' ? 'skip' : ''].join(' ');
+    const d = t && t.mode === 'quick' && s.k === 'plan' ? 'skipped (quick)' : s.d;
+    const loop = s.k === 'code' ? ` <span title="code ⇄ verify ⇄ fix up to ${cfg.limits.fixIterations}×, review fix ${cfg.limits.reviewRounds}×">↺</span>` : '';
+    return `<div class="step ${cls}"><b>${s.n}${loop}</b><span>${esc(d)}</span></div>`;
+  }).join('')}</div>`;
+}
+
+// ---------------- board ----------------
+const COLS = [
+  ['Queued', ['backlog', 'ready']], ['Running', ['running']], ['Needs you', ['needs_info', 'review', 'failed']],
+  ['Shipping', ['approved', 'pr_open']], ['Closed', ['done', 'rejected']],
+];
+function viewBoard() {
+  const repo = page.repo || '';
+  const ts = S.tickets.filter((t) => !repo || t.repo === repo);
+  const repos = S.repos.map((r) => `<option ${r.name === repo ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
+  $('#view').innerHTML = `
+    <div class="row" style="margin-bottom:10px"><h2>How a ticket runs</h2><span class="muted small">— purple = Claude, blue = OpenCode, grey = no tokens, amber = you</span></div>
+    ${flow(S.config)}
+    <div class="row" style="margin-bottom:12px">
+      <select id="repoF" style="width:auto"><option value="">All repos</option>${repos}</select>
+      <span class="muted small">${S.tickets.length} tickets · Claude spend ≈ $${S.tickets.reduce((n, t) => n + t.cost, 0).toFixed(3)}</span>
+    </div>
+    <div class="cols">${COLS.map(([name, sts]) => {
+      let list = ts.filter((t) => sts.includes(t.status));
+      if (name === 'Closed') list = list.slice(-12);
+      return `<div class="col"><h4><span>${name}</span><span>${list.length}</span></h4>${list.slice().reverse().map(cardHtml).join('') || '<div class="muted small">—</div>'}</div>`;
+    }).join('')}</div>`;
+  $('#repoF').onchange = (e) => { page.repo = e.target.value; render(); };
+}
+function cardHtml(t) {
+  return `<a class="card" href="#/ticket/${t.id}">
+    <div class="row small"><b>${t.id}</b><span class="muted">${esc(t.repo)}</span>${t.mode === 'quick' ? '<span class="badge">⚡ quick</span>' : ''}<span class="grow"></span><span class="s-${t.status}">${ICON[t.status]} ${t.status.replace('_', ' ')}${t.stage ? ` · ${t.stage}` : ''}</span></div>
+    <div class="t">${esc(t.title)}</div>
+    ${t.error && t.status === 'failed' ? `<div class="small" style="color:var(--bad)">${esc(t.error)}</div>` : ''}
+    <div class="small muted">${ago(t.updatedAt)}${t.iterations ? ` · ${t.iterations} iter` : ''}${t.cost ? ` · $${t.cost}` : ''}</div></a>`;
+}
+
+// ---------------- ticket ----------------
+let T = null;
+async function viewTicket(id, keepTab) {
+  T = await api('GET', `tickets/${id}`);
+  page.tab = keepTab ? page.tab : (T.status === 'needs_info' ? 'questions' : T.status === 'review' ? 'result' : T.status === 'running' ? 'logs' : 'plan');
+  drawTicket();
+}
+function actionsFor(t) {
+  const b = (act, label, cls = '') => `<button class="${cls}" onclick="act('${act}')">${label}</button>`;
+  return {
+    backlog: [b('run', '▶ Run', 'primary'), b('reject', 'Reject', 'danger')],
+    ready: [b('stop', '⏹ Back to backlog')],
+    running: [b('stop', t.cancel ? 'cancelling…' : '⏹ Stop', 'danger')],
+    needs_info: [b('reject', 'Reject', 'danger')],
+    review: [b('approve', '✅ Approve → push + PR', 'primary'), `<button onclick="page.tab='changes';drawTicket()">🔁 Request changes</button>`, b('replan', 'Re-plan'), b('reject', 'Reject', 'danger')],
+    failed: [b('run', '🔁 Retry', 'primary'), b('replan', 'Re-plan'), b('reject', 'Reject', 'danger')],
+    pr_open: [t.pr ? `<a href="${esc(t.pr)}" target="_blank"><button class="primary">🔗 Open PR</button></a>` : '', `<button onclick="page.tab='changes';drawTicket()">🔁 Changes</button>`, b('done', '✔ Done')],
+  }[t.status] || [];
+}
+function drawTicket() {
+  const t = T;
+  const tabs = [['plan', 'Plan'], ...(t.status === 'needs_info' || t.files.questions ? [['questions', 'Questions']] : []), ['result', 'Result'], ['diff', `Diff${t.diffChars ? '' : ' (none)'}`], ['logs', `Logs (${t.logs.length})`], ['ticket', 'Ticket'], ['history', 'History'],
+    ...(['review', 'pr_open'].includes(t.status) ? [['changes', 'Request changes']] : [])];
+  if (!tabs.some(([k]) => k === page.tab)) page.tab = 'plan';
+  $('#view').innerHTML = `
+    <div class="row"><a href="#/board">← Board</a></div>
+    <div class="row" style="margin:10px 0 4px"><h2>${t.id} · ${esc(t.title)}</h2><span class="badge s-${t.status}">${ICON[t.status]} ${t.status.replace('_', ' ')}${t.stage ? ` · ${t.stage}` : ''}</span>${t.mode === 'quick' ? '<span class="badge">⚡ quick</span>' : ''}</div>
+    <div class="small muted" style="margin-bottom:12px">${esc(t.repo)} · branch <code>${esc(t.branch)}</code> · iterations ${t.iterations} · Claude ≈ $${t.cost.claudeUsd}${t.pr ? ` · <a href="${esc(t.pr)}" target="_blank">${esc(t.pr)}</a>` : ''}</div>
+    ${flow(S.config, t)}
+    <div class="row">${actionsFor(t).join('')}</div>
+    ${t.worktree ? `<div class="small" style="margin-top:10px">🧪 Test locally: <code id="wt">${esc(t.worktree)}</code> <button class="small" onclick="navigator.clipboard.writeText($('#wt').textContent);toast('copied')">copy</button></div>` : ''}
+    ${t.error ? `<div class="box err" style="margin-top:10px"><pre>${esc(t.error)}</pre></div>` : ''}
+    <div class="tabs">${tabs.map(([k, n]) => `<button class="${k === page.tab ? 'on' : ''}" onclick="page.tab='${k}';drawTicket()">${n}</button>`).join('')}</div>
+    <div id="tab"></div>`;
+  drawTab();
+}
+function drawTab() {
+  const t = T, el = $('#tab');
+  const editable = !['running', 'approved'].includes(t.status);
+  if (page.tab === 'plan') {
+    el.innerHTML = t.files.brief
+      ? `<p class="small muted">${t.mode === 'quick' ? 'Quick mode: the ticket text is the brief (no Claude plan).' : `Written by ${esc(S.config.engines.plan.tool)} · ${esc(S.config.engines.plan.model)}.`} This brief is all the coder sees. ${editable ? 'Edit it, then Run / Retry / Request changes to code against your version.' : ''}</p>
+         <textarea id="brief" rows="26" ${editable ? '' : 'readonly'}>${esc(t.files.brief)}</textarea>
+         ${editable ? '<div class="row" style="margin-top:8px"><button class="primary" onclick="saveBrief()">Save plan</button><span class="muted small">Ctrl+S</span></div>' : ''}`
+      : `<p class="muted">No plan yet. ${t.status === 'ready' || t.status === 'running' ? 'It is written when the ticket reaches the Plan step.' : ''}</p>`;
+    if (editable && $('#brief')) $('#brief').onkeydown = (e) => { if (e.ctrlKey && e.key === 's') { e.preventDefault(); saveBrief(); } };
+  } else if (page.tab === 'questions') {
+    el.innerHTML = `<div class="box"><pre>${esc(t.files.questions || '(none)')}</pre></div>
+      ${t.status === 'needs_info' ? `<label>Your answers</label><textarea id="ans" rows="6"></textarea><div class="row" style="margin-top:8px"><button class="primary" onclick="act('answer', $('#ans').value)">Send answers → re-plan</button></div>` : ''}
+      ${(t.answers || []).length ? `<h3>Previous answers</h3>${t.answers.map((a) => `<div class="box" style="margin-bottom:6px"><pre>${esc(a)}</pre></div>`).join('')}` : ''}`;
+  } else if (page.tab === 'result') {
+    const summary = t.files.summary.replace(/^## .*\n+/, '').replace(/\n### Review[\s\S]*$/, '').trim();
+    el.innerHTML = `${summary ? `<h3>Summary</h3><div class="box"><pre>${esc(summary)}</pre></div>` : '<p class="muted">No result yet.</p>'}
+      ${t.files.review ? `<h3>Review (Claude)</h3><div class="box"><pre>${esc(t.files.review)}</pre></div>` : ''}
+      ${t.files.worker ? `<h3>Coder report (last lines)</h3><div class="box"><pre>${esc(t.files.worker)}</pre></div>` : ''}`;
+  } else if (page.tab === 'diff') {
+    el.innerHTML = '<p class="muted">loading…</p>';
+    api('GET', `tickets/${t.id}/diff`).then(({ text }) => { el.innerHTML = text ? renderDiff(text) : '<p class="muted">No diff yet (written after the local commit).</p>'; });
+  } else if (page.tab === 'logs') {
+    const sel = page.log && t.logs.some((l) => l.name === page.log) ? page.log : (t.logs.at(-1) || {}).name;
+    page.log = sel;
+    el.innerHTML = t.logs.length ? `<div class="row" style="margin-bottom:8px">${t.logs.map((l) => `<button class="small ${l.name === sel ? 'primary' : ''}" onclick="page.log=${js(l.name)};drawTab()">${l.name}</button>`).join('')}</div><div class="logbox"><pre id="logtext">loading…</pre></div>` : '<p class="muted">No logs yet.</p>';
+    if (sel) loadLog(sel);
+  } else if (page.tab === 'ticket') {
+    el.innerHTML = `<div class="box"><b>${esc(t.title)}</b><pre style="margin-top:6px">${esc(t.description || '(no description)')}</pre></div>
+      ${t.feedback.length ? `<h3>Change requests</h3>${t.feedback.map((f, i) => `<div class="box" style="margin-bottom:6px"><span class="muted small">round ${i + 2}</span><pre>${esc(f)}</pre></div>`).join('')}` : ''}`;
+  } else if (page.tab === 'history') {
+    el.innerHTML = `<div class="history">${t.history.slice().reverse().map((h) => `<div><span class="muted">${new Date(h.at).toLocaleString()}</span> — ${esc(h.text)}</div>`).join('')}</div>`;
+  } else if (page.tab === 'changes') {
+    el.innerHTML = `<p class="small muted">OpenCode re-codes on the same branch with your notes (no new Claude plan), then verify + review run again.</p>
+      <textarea id="chg" rows="7" placeholder="What should change…"></textarea>
+      <div class="row" style="margin-top:8px"><button class="primary" onclick="act('changes', $('#chg').value)">Send back to the loop</button></div>`;
+  }
+}
+async function loadLog(name) {
+  const { text, total } = await api('GET', `tickets/${T.id}/logs/${encodeURIComponent(name)}?tail=500`);
+  const el = $('#logtext');
+  if (!el) return;
+  const stick = el.parentElement.scrollTop + el.parentElement.clientHeight >= el.parentElement.scrollHeight - 30;
+  el.textContent = (total > 500 ? `… ${total - 500} earlier lines\n` : '') + (text || '(empty)');
+  if (stick) el.parentElement.scrollTop = el.parentElement.scrollHeight;
+}
+function renderDiff(text) {
+  return `<div class="diff">${text.split('\n').map((l) => {
+    if (l.startsWith('diff --git')) return `<div class="file">${esc(l.replace(/^diff --git a\/(.*) b\/.*/, '$1'))}</div>`;
+    if (/^(index |--- |\+\+\+ )/.test(l)) return '';
+    const c = l.startsWith('@@') ? 'hunk' : l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : '';
+    return `<div class="${c}">${esc(l)}</div>`;
+  }).join('')}</div>`;
+}
+const act = guard(async (a, text) => {
+  if (a === 'reject' && !confirm(`Reject ${T.id}? Its worktree and unpushed branch are deleted.`)) return;
+  if (a === 'approve' && !confirm(`Push ${T.branch} and open a PR?`)) return;
+  T = await api('POST', `tickets/${T.id}/action/${a}`, { text });
+  toast(`${T.id} → ${T.status}`);
+  page.tab = a === 'changes' || a === 'answer' ? 'history' : page.tab;
+  await refresh(); drawTicket();
+});
+const saveBrief = guard(async () => { T = await api('PUT', `tickets/${T.id}/brief`, { text: $('#brief').value }); toast('plan saved'); drawTicket(); });
+
+// ---------------- new ticket ----------------
+function newTicket() {
+  if (!S.repos.length) { toast('Add a repo first (Repos tab)', true); location.hash = '#/repos'; return; }
+  const cur = page.v === 'repos' && page.name ? page.name : page.repo || S.repos[0].name;
+  $('#dlgForm').innerHTML = `<h2>New ticket</h2>
+    <label>Repo</label><select id="nRepo">${S.repos.map((r) => `<option ${r.name === cur ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
+    <label>Title</label><input id="nTitle" placeholder="Add CSV export to the orders page" required>
+    <label>Description <span class="muted">(goal, files you know, acceptance criteria)</span></label><textarea id="nDesc" rows="7"></textarea>
+    <label>Mode</label>
+    <div class="row"><label style="margin:0;color:var(--text)"><input type="radio" name="mode" value="full" checked style="width:auto"> Full — Claude plans, OpenCode codes, Claude reviews</label></div>
+    <div class="row"><label style="margin:0;color:var(--text)"><input type="radio" name="mode" value="quick" style="width:auto"> ⚡ Quick — OpenCode only (small, obvious changes; cheapest)</label></div>
+    <div class="row" style="margin-top:8px"><label style="margin:0;color:var(--text)"><input type="checkbox" id="nBacklog" style="width:auto"> Put in backlog (don't start yet)</label></div>
+    <div class="row" style="margin-top:16px;justify-content:flex-end"><button value="cancel" formnovalidate>Cancel</button><button class="primary" id="nGo" value="ok">Create</button></div>`;
+  const dlg = $('#dlg');
+  dlg.onclose = guard(async () => {
+    if (dlg.returnValue !== 'ok') return;
+    const t = await api('POST', 'tickets', { repo: $('#nRepo').value, title: $('#nTitle').value, description: $('#nDesc').value, quick: $('input[name=mode]:checked').value === 'quick', backlog: $('#nBacklog').checked });
+    toast(`${t.id} created (${t.status})`);
+    await refresh(); location.hash = `#/ticket/${t.id}`;
+  });
+  dlg.showModal(); $('#nTitle').focus();
+}
+
+// ---------------- editor (shared by repos + kit) ----------------
+function editorHtml(f, saveLabel) {
+  return `<div class="row" style="margin-bottom:6px"><code>${esc(f.path)}</code>${f.writable ? '' : '<span class="badge">read-only</span>'}<span class="grow"></span>
+      ${f.writable ? `<button class="primary small" id="edSave">${saveLabel}</button>` : ''}</div>
+    <textarea id="ed" rows="28" ${f.writable ? '' : 'readonly'}>${esc(f.text)}</textarea><div id="edOut" class="small" style="margin-top:6px"></div>`;
+}
+function bindEditor(save) {
+  const go = guard(async () => { const out = await save($('#ed').value); $('#edOut').innerHTML = out || '<span class="b-ok">saved</span>'; });
+  if ($('#edSave')) $('#edSave').onclick = go;
+  if ($('#ed')) $('#ed').onkeydown = (e) => { if (e.ctrlKey && e.key === 's') { e.preventDefault(); go(); } };
+}
+
+// ---------------- repos ----------------
+let R = null;
+async function viewRepos(name) {
+  if (!name && S.repos.length) { location.hash = `#/repos/${encodeURIComponent(S.repos[0].name)}`; return; }
+  R = name ? await api('GET', `repos/${encodeURIComponent(name)}`) : null;
+  drawRepo();
+}
+function drawRepo() {
+  const list = `<div class="panel list">${S.repos.map((r) => `<a href="#/repos/${encodeURIComponent(r.name)}" class="${R && R.name === r.name ? 'on' : ''}"><b>${esc(r.name)}</b><div class="small muted">${esc(r.path)}</div></a>`).join('') || '<p class="muted">No repos yet.</p>'}
+    <h3>Add repo</h3><input id="addPath" placeholder="D:/my-repo"><div class="row" style="margin-top:6px"><button class="small primary" onclick="addRepo()">Add</button></div></div>`;
+  if (!R) { $('#view').innerHTML = `<div class="split">${list}<div></div></div>`; return; }
+  const k = R.kit;
+  const kinds = ['agents', 'commands', 'skills', 'packs', 'hooks', 'other'];
+  const installed = kinds.map((kind) => {
+    const items = R.installed.filter((i) => i.kind === kind);
+    if (!items.length) return '';
+    return `<tr><th colspan="4">${kind}</th></tr>${items.map((i) => `<tr>
+      <td><b>${esc(i.name)}</b>${i.override ? ' <span class="badge">local override</span>' : ''}</td>
+      <td class="small muted">${i.tools.join(', ')}</td>
+      <td class="small b-${i.status}">${i.status}</td>
+      <td style="text-align:right"><button class="small" onclick="openRepoFile(${js(i.files[0].path)})">view</button>
+        ${kind !== 'other' && !i.override ? `<button class="small" onclick="overrideItem(${js(kind)},${js(i.name)})">override</button>` : ''}</td></tr>`).join('')}`;
+  }).join('');
+  const fileLinks = (arr) => arr.map((f) => `<a href="javascript:void 0" onclick="openRepoFile(${js(f)})">${esc(f)}</a>`).join('<br>') || '<span class="muted small">none</span>';
+  $('#view').innerHTML = `<div class="split">${list}<div>
+    <div class="panel">
+      <div class="row"><h2>${esc(R.name)}</h2><span class="muted small">${esc(R.path)}</span>${R.exists ? '' : '<span class="badge b-missing">path missing</span>'}<span class="grow"></span>
+        <a href="#/board" onclick="page.repo=${js(R.name)}">${R.tickets} ticket(s) →</a></div>
+      <h3>Loop settings</h3>
+      <div class="grid3">
+        <div><label>Base branch</label><input id="rBase" value="${esc(R.base || '')}"></div>
+        <div><label>Setup command <span class="muted">(empty = auto)</span></label><input id="rSetup" value="${esc(R.setup ?? '')}" placeholder="${esc(R.commands.setup || 'none')}"></div>
+        <div><label>Verify commands <span class="muted">(one per line; empty = auto)</span></label><textarea id="rVerify" rows="2" placeholder="${esc(R.commands.verify.join('\n') || 'none detected')}">${esc((R.verify || []).join('\n'))}</textarea></div>
+      </div>
+      <div class="row" style="margin-top:8px"><button class="primary small" onclick="saveRepo()">Save</button><span class="small muted">In use → setup: <code>${esc(R.commands.setup || '—')}</code> · verify: <code>${esc(R.commands.verify.join(' && ') || '—')}</code></span>
+        <span class="grow"></span><button class="small danger" onclick="removeRepo()">Remove from hub</button></div>
+
+      <h3>Kit in this repo</h3>
+      <div class="row small">${k ? `installed <b>${esc(k.version)}</b>${k.version !== k.latest ? ` <span class="b-modified">(${esc(k.latest)} available)</span>` : ''} · tools ${esc(k.tools.join(', '))} · packs ${esc(k.packs.join(', ') || 'none')} · synced ${ago(k.syncedAt)}` : '<span class="b-missing">not synced yet</span>'}</div>
+      <div class="row" style="margin-top:8px"><button class="small" onclick="syncRepo(true)">Preview sync</button><button class="small primary" onclick="syncRepo(false)">Sync</button><button class="small" onclick="syncRepo(false, true)">Force sync</button><button class="small" onclick="doctorRepo()">Doctor</button></div>
+      <pre id="repoOut" class="box" style="margin-top:8px;display:none"></pre>
+      ${installed ? `<table style="margin-top:10px">${installed}</table>` : ''}
+      <div class="grid2" style="margin-top:6px">
+        <div><h3>Local overrides (.kit/local)</h3><div class="small">${fileLinks(R.local)}</div></div>
+        <div><h3>Memory &amp; root files</h3><div class="small">${fileLinks([...R.roots, ...R.wiki])}</div></div>
+      </div>
+    </div>
+    <div class="panel" id="repoEd" style="margin-top:14px;display:none"></div>
+  </div></div>`;
+}
+const addRepo = guard(async () => { const r = await api('POST', 'repos', { path: $('#addPath').value.trim() }); toast(r.text); await refresh(); viewRepos(S.repos.at(-1)?.name); });
+const saveRepo = guard(async () => {
+  const lines = $('#rVerify').value.split('\n').map((s) => s.trim()).filter(Boolean);
+  R = await api('PUT', `repos/${encodeURIComponent(R.name)}`, { base: $('#rBase').value.trim(), setup: $('#rSetup').value.trim() || null, verify: lines.length ? lines : null });
+  toast('saved'); drawRepo();
+});
+const removeRepo = guard(async () => { if (!confirm(`Remove ${R.name} from the hub? (files are not touched)`)) return; await api('DELETE', `repos/${encodeURIComponent(R.name)}`); await refresh(); location.hash = '#/repos'; R = null; viewRepos(); });
+const syncRepo = guard(async (dry, force) => {
+  if (force && !confirm('Force sync overwrites locally modified kit files. Continue?')) return;
+  const r = await api('POST', `repos/${encodeURIComponent(R.name)}/sync`, { dry, force });
+  if (!dry) { R = r.info; drawRepo(); }
+  const o = $('#repoOut'); o.style.display = ''; o.textContent = r.text;
+});
+const doctorRepo = guard(async () => { const r = await api('GET', `repos/${encodeURIComponent(R.name)}/doctor`); const o = $('#repoOut'); o.style.display = ''; o.textContent = r.text; });
+const openRepoFile = guard(async (path) => {
+  const f = await api('GET', `repos/${encodeURIComponent(R.name)}/file?path=${encodeURIComponent(path)}`);
+  const el = $('#repoEd'); el.style.display = '';
+  el.innerHTML = editorHtml(f, 'Save') + (f.writable ? '' : '<p class="small muted">Synced from the kit. Use "override" to customise it for this repo, or edit the source in the Kit tab.</p>');
+  bindEditor(async (text) => { await api('PUT', `repos/${encodeURIComponent(R.name)}/file`, { path, text }); return path.startsWith('.kit/local/') ? '<span class="b-ok">saved</span> — click <b>Sync</b> to apply it to .claude/.opencode' : ''; });
+  el.scrollIntoView({ behavior: 'smooth' });
+});
+const overrideItem = guard(async (kind, name) => {
+  const r = await api('POST', `repos/${encodeURIComponent(R.name)}/override`, { kind, name });
+  R = await api('GET', `repos/${encodeURIComponent(R.name)}`); drawRepo();
+  toast(`copied to ${r.path}; edit, then Sync`); openRepoFile(r.path);
+});
+
+// ---------------- kit ----------------
+let K = null;
+async function viewKit(path) {
+  K = K || await api('GET', 'kit/catalog');
+  const groups = ['agents', 'commands', 'skills', 'packs', 'hooks'];
+  const list = groups.map((g) => `<div class="grp">${g}</div>${K.items.filter((i) => i.kind === g).map((i) => {
+    const over = i.budget && i.lines > i.budget;
+    return `<a href="#/kit/${encodeURIComponent(i.path)}" class="${i.path === path ? 'on' : ''}" title="${esc(i.description)}"><div class="row"><b>${esc(i.name)}</b>${i.model ? `<span class="badge">${esc(i.model)}</span>` : ''}${i.targets ? `<span class="badge">${esc(i.targets.join('/'))} only</span>` : ''}<span class="grow"></span><span class="small ${over ? 'b-over' : 'muted'}">${i.lines}${i.budget ? `/${i.budget}` : ''}</span></div></a>`;
+  }).join('')}`).join('') + `<div class="grp">config &amp; templates</div>${K.files.map((f) => `<a href="#/kit/${encodeURIComponent(f)}" class="${f === path ? 'on' : ''}"><span class="small">${esc(f)}</span></a>`).join('')}`;
+  $('#view').innerHTML = `<div class="split"><div class="panel list" style="max-height:80vh;overflow:auto">
+      <div class="row" style="padding:0 9px"><b>Kit ${esc(K.version)}</b><span class="grow"></span><button class="small" onclick="kitLint()">Lint</button></div>${list}</div>
+    <div class="panel" id="kitEd"><p class="muted">Pick an agent, command, skill or pack. These are the sources: edits reach a repo when you <b>Sync</b> it (Repos tab). Numbers are body lines / budget.</p><pre id="kitOut" class="box" style="display:none"></pre></div></div>`;
+  if (path) {
+    const f = await api('GET', `kit/file?path=${encodeURIComponent(path)}`);
+    const item = K.items.find((i) => i.path === path);
+    $('#kitEd').innerHTML = (item?.description ? `<p class="small muted">${esc(item.description)}</p>` : '') + editorHtml(f, 'Save + lint');
+    bindEditor(async (text) => { const r = await api('PUT', 'kit/file', { path, text }); K = null; return `<pre class="${r.lint === 'lint: ok' ? 'b-ok' : 'b-over'}">${esc(r.lint)}</pre>`; });
+  }
+}
+const kitLint = guard(async () => { const r = await api('GET', 'kit/lint'); const o = $('#kitOut') || $('#edOut'); if (o) { o.style.display = ''; o.textContent = r.text; } else toast(r.text); });
+
+// ---------------- settings ----------------
+function viewSettings() {
+  const c = S.config;
+  const eng = (k, label) => `<div><label>${label}</label><div class="row" style="flex-wrap:nowrap">
+      <select id="e_${k}_tool" style="width:110px"><option ${c.engines[k].tool === 'claude' ? 'selected' : ''}>claude</option><option ${c.engines[k].tool === 'opencode' ? 'selected' : ''}>opencode</option></select>
+      <input id="e_${k}_model" list="models" value="${esc(c.engines[k].model)}" placeholder="default"></div></div>`;
+  const num = (sec, k, label) => `<div><label>${label}</label><input type="number" id="n_${sec}_${k}" value="${c[sec][k]}"></div>`;
+  $('#view').innerHTML = `<div class="panel" style="max-width:880px">
+    <h2>Settings</h2><p class="small muted">Stored in ~/.kit-hub/hub.json. Applies to the next stage that starts.</p>
+    <datalist id="models"><option>opus</option><option>sonnet</option><option>haiku</option><option>opencode/big-pickle</option></datalist>
+    <h3>Engines</h3><div class="grid3">${eng('plan', 'Plan (once per ticket)')}${eng('code', 'Code + fixes')}${eng('review', 'Review')}</div>
+    <h3>Limits</h3><div class="grid3">${num('limits', 'maxParallel', 'Tickets in parallel (1 per repo)')}${num('limits', 'fixIterations', 'Verify-fix attempts')}${num('limits', 'reviewRounds', 'Review fix rounds')}
+      ${num('limits', 'stageTimeoutMin', 'Stage timeout (min)')}${num('limits', 'claudeBudgetUsd', 'Max $ per Claude call')}${num('review', 'skipUnderLines', 'Skip review under N lines')}</div>
+    <h3>Pull requests &amp; notifications</h3>
+    <div class="grid3"><div><label>PR</label><label style="color:var(--text)"><input type="checkbox" id="prDraft" style="width:auto" ${c.pr.draft ? 'checked' : ''}> open as draft</label></div>
+      <div><label>ntfy topic</label><input id="ntfyTopic" value="${esc(c.ntfy.topic)}" placeholder="off"></div>
+      <div><label>Telegram</label><div class="small" style="padding-top:6px">${c.telegram.enabled ? `on · ${c.telegram.paired} paired chat(s)` : 'off — run <code>kit hub telegram &lt;token&gt;</code>'}</div></div></div>
+    <div class="row" style="margin-top:16px"><button class="primary" onclick="saveSettings()">Save</button></div></div>`;
+}
+const saveSettings = guard(async () => {
+  const e = (k) => ({ tool: $(`#e_${k}_tool`).value, model: $(`#e_${k}_model`).value.trim() });
+  const n = (sec, k) => Number($(`#n_${sec}_${k}`).value);
+  S.config = await api('PUT', 'config', {
+    engines: { plan: e('plan'), code: e('code'), review: e('review') },
+    limits: { maxParallel: n('limits', 'maxParallel'), fixIterations: n('limits', 'fixIterations'), reviewRounds: n('limits', 'reviewRounds'), stageTimeoutMin: n('limits', 'stageTimeoutMin'), claudeBudgetUsd: n('limits', 'claudeBudgetUsd') },
+    review: { skipUnderLines: n('review', 'skipUnderLines') }, pr: { draft: $('#prDraft').checked }, ntfy: { topic: $('#ntfyTopic').value.trim() },
+  });
+  toast('settings saved');
+});
+
+// ---------------- shell ----------------
+async function refresh() {
+  S = await api('GET', 'state');
+  const p = S.daemon.paused;
+  $('#loop').innerHTML = `<span class="dot ${p ? 'paused' : 'on'}"></span>loop ${p ? 'paused' : 'running'} · ${S.tickets.filter((t) => t.status === 'running').length} active`;
+  $('#loopBtn').textContent = p ? '▶ Resume loop' : '⏸ Pause loop';
+}
+$('#loopBtn').onclick = guard(async () => { await api('POST', 'loop', { paused: !S.daemon.paused }); await refresh(); toast(S.daemon.paused ? 'loop paused (running tickets finish)' : 'loop resumed'); });
+
+async function render() {
+  const [v, ...rest] = location.hash.replace(/^#\/?/, '').split('/');
+  const arg = decodeURIComponent(rest.join('/'));
+  page.v = v || 'board';
+  document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.v === (page.v === 'ticket' ? 'board' : page.v)));
+  try {
+    if (page.v === 'board') viewBoard();
+    else if (page.v === 'ticket') await viewTicket(arg);
+    else if (page.v === 'repos') { page.name = arg; await viewRepos(arg); }
+    else if (page.v === 'kit') await viewKit(arg);
+    else if (page.v === 'settings') viewSettings();
+  } catch (e) { $('#view').innerHTML = `<div class="panel err"><pre>${esc(e.message)}</pre></div>`; }
+}
+
+// Live updates without stealing focus from editors.
+async function poll() {
+  try {
+    const before = JSON.stringify(S.tickets);
+    await refresh();
+    const changed = before !== JSON.stringify(S.tickets);
+    const typing = ['TEXTAREA', 'INPUT', 'SELECT'].includes(document.activeElement?.tagName) || $('#dlg').open;
+    if (page.v === 'board' && changed && !typing) viewBoard();
+    if (page.v === 'ticket' && T) {
+      const s = S.tickets.find((t) => t.id === T.id);
+      if (s && (changed || s.status === 'running') && !typing) {
+        if (page.tab === 'logs' && s.status === 'running' && s.updatedAt === T.updatedAt) { if (page.log) loadLog(page.log); }
+        else await viewTicket(T.id, true);
+      }
+    }
+  } catch { $('#loop').innerHTML = '<span class="dot"></span>daemon unreachable'; }
+}
+
+window.addEventListener('hashchange', render);
+refresh().then(render);
+setInterval(poll, 3000);
+</script>
+</body>
+</html>
