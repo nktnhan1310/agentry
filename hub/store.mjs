@@ -16,6 +16,8 @@ export const paths = {
 
 export const DEFAULT_CONFIG = {
   repos: {},
+  // Where ticket worktrees live (empty = ~/.kit-hub/worktrees). Put it on a big/fast drive, e.g. D:/kit-worktrees.
+  worktreeDir: '',
   // Opus writes the brief once per ticket (a sharper brief saves fix loops); sonnet reviews; free opencode codes and fixes.
   // `agent` = a Claude Code agent (`claude --agent`) for that stage; repo `agents.<stage>` and ticket `agents.<stage>` override it.
   engines: {
@@ -23,8 +25,15 @@ export const DEFAULT_CONFIG = {
     code: { tool: 'opencode', model: '', agent: '' },
     review: { tool: 'claude', model: 'sonnet', agent: '' },
     test: { tool: 'claude', model: '', agent: '' },
+    // Two-audience report (plain language + engineers) for Telegram, the UI and the PR body. tool "off" disables it.
+    summary: { tool: 'claude', model: 'haiku' },
+    // After `after` failed attempts on a ticket, code with this engine instead (0 = off). E.g. local model first, then sonnet.
+    escalate: { tool: 'claude', model: 'sonnet', after: 0 },
+    // Auto-merge repos: when a PR conflicts with its base, merge the base in and resolve with this engine. "off" disables.
+    resolve: { tool: 'claude', model: 'opus' },
   },
-  limits: { maxParallel: 1, fixIterations: 3, reviewRounds: 1, stageTimeoutMin: 30, claudeBudgetUsd: 1 },
+  // Per repo (in repos.<name>): paused, autoRun (queue the oldest backlog ticket when the repo is idle), autoApprove (push + PR once verify and review pass), autoMerge, mergeMethod.
+  limits: { maxParallel: 1, maxPlanning: 2, fixIterations: 3, reviewRounds: 1, stageTimeoutMin: 30, claudeBudgetUsd: 1 },
   // Skip the Claude review for tiny diffs; inline the diff so review is usually one turn (no file-read round trips).
   review: { skipUnderLines: 20, inlineDiffChars: 30000 },
   pr: { draft: false },
@@ -82,7 +91,7 @@ export function listTickets(filter = {}) {
     .filter((d) => existsSync(ticketFile(d, 'ticket.json')))
     .map((d) => JSON.parse(readFileSync(ticketFile(d, 'ticket.json'), 'utf8')))
     .filter((t) => (!filter.status || [].concat(filter.status).includes(t.status)) && (!filter.repo || t.repo === filter.repo))
-    .sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
+    .sort(byCreation);
 }
 
 // A tracker key reaches shell commands through {ticket}, so only plain key characters are allowed.
@@ -91,23 +100,55 @@ export const ticketKey = (t) => t.key || t.id;
 // "{ticket}/{repo}" → values; unknown {names} stay as they are (shell braces, JSON).
 export const fill = (tpl, vars) => String(tpl).replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined ? String(vars[k]) : m));
 
-export const normId = (id) => (/^\d+$/.test(String(id)) ? `T${id}` : String(id).toUpperCase());
+// Creation order = dependency order (autoRun relies on it). Ids can't sort across prefixes (T37 vs PIX-1).
+const idNum = (id) => Number(String(id).match(/(\d+)$/)?.[1] || 0);
+export const byCreation = (a, b) => (a.createdAt || '').localeCompare(b.createdAt || '') || idNum(a.id) - idNum(b.id);
+
+// Ticket ids are per repo: PIX-1, PIX-2 … Prefix = repos.<name>.prefix, else derived from the name: initials for
+// multi-word names (saas-core → SC, binance-futures-monitor → BFM), else the first 3 letters (pixtune → PIX).
+// Legacy global ids (T1, T2 …) stay valid.
+export const PREFIX_RE = /^[A-Z][A-Z0-9]{0,7}$/;
+export function repoPrefix(name, repo = {}) {
+  if (repo.prefix) return repo.prefix;
+  const words = name.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+  const p = words.length > 1 ? words.map((w) => w[0]).join('').slice(0, 8) : (words[0] || '').slice(0, 3);
+  return PREFIX_RE.test(p) ? p : 'T';
+}
+
+// "37" → T37 (legacy), "pix1" / "pix-1" → PIX-1, anything else upper-cased as is.
+export function normId(id) {
+  const s = String(id).trim().toUpperCase();
+  if (/^\d+$/.test(s)) return `T${s}`;
+  if (/^T\d+$/.test(s)) return s;
+  const m = s.match(/^([A-Z][A-Z0-9]*?)-?(\d+)$/);
+  return m ? `${m[1]}-${m[2]}` : s;
+}
 
 // mode "quick": no Claude plan — the ticket text itself is the brief for opencode (zero Claude tokens if the diff is small).
 // key/url: the ticket in an external tracker; agents: per-stage agent overrides (e.g. from an import's routing).
-export function createTicket({ repo, title, description = '', status = 'ready', mode = 'full', key = '', url = '', agents = {} }) {
+// source: where it came from, e.g. ".wiki/plans/mvp.md#2" (plan import dedupes on it).
+// kind "bug": same pipeline, but the planner also gets the screenshots and must name the root cause + a regression test.
+export const SEVERITIES = ['low', 'medium', 'high', 'critical'];
+export function createTicket({ repo, title, description = '', status = 'ready', mode = 'full', key = '', url = '', agents = {}, source = '', kind = 'feature', severity = '' }) {
   const cfg = loadConfig();
   const r = cfg.repos[repo];
   if (!r) throw new Error(`unknown repo "${repo}". Known: ${Object.keys(cfg.repos).join(', ') || 'none (kit hub repo add <path>)'}`);
   if (key && !KEY_RE.test(key)) throw new Error(`ticket key "${key}" may only contain letters, digits, ".", "_" and "-"`);
   if (key && listTickets({ repo }).some((x) => x.key === key && !['rejected', 'done'].includes(x.status))) throw new Error(`${key} already has an open ticket in ${repo}`);
+  if (!['feature', 'bug'].includes(kind)) throw new Error(`unknown kind "${kind}" (feature | bug)`);
+  if (kind === 'bug' && !SEVERITIES.includes(severity || 'medium')) throw new Error(`severity must be one of: ${SEVERITIES.join(', ')}`);
+  const prefix = repoPrefix(repo, r);
   const state = loadState();
-  const id = `T${state.nextId++}`;
+  state.counters = state.counters || {};
+  let n = state.counters[prefix] || 0;
+  do n++; while (existsSync(ticketDir(`${prefix}-${n}`))); // repos may share a prefix: never reuse an id
+  state.counters[prefix] = n;
   saveState(state);
+  const id = `${prefix}-${n}`;
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task';
   const branch = fill(r.branch || 'kit/{id}-{slug}', { id, slug, ticket: key || id, repo });
   const t = {
-    id, repo, title, description, status, mode, key, url, agents,
+    id, repo, title, description, status, mode, key, url, agents, source, kind, ...(kind === 'bug' ? { severity: severity || 'medium' } : {}),
     resume: 'plan', branch, worktree: '', baseSha: '',
     feedback: [], iterations: 0, cost: { claudeUsd: 0 }, pr: '', error: '',
     createdAt: new Date().toISOString(), history: [],

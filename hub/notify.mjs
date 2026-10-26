@@ -8,6 +8,10 @@ const LINE = {
   failed: (t) => `${t.id} failed: ${t.title}`,
   pr_open: (t) => `${t.id} PR opened: ${t.title}`,
   approve_failed: (t) => `${t.id} push/PR failed: ${t.title}`,
+  merged: (t) => `${t.id} merged: ${t.title}`,
+  conflict: (t) => `${t.id} PR has conflicts kit could not resolve: ${t.title}`,
+  planned: (t) => `${t.id} plan ready: ${t.title}`,
+  bug: (t) => `${t.id} e2e bug (${t.severity}): ${t.title}`,
 };
 
 export async function notify(t, kind) {
@@ -18,7 +22,7 @@ export async function notify(t, kind) {
     try {
       await fetch(`${cfg.ntfy.server.replace(/\/$/, '')}/${cfg.ntfy.topic}`, {
         method: 'POST', body: line,
-        headers: { Title: 'agentry', Tags: kind === 'review' ? 'eyes' : kind === 'pr_open' ? 'rocket' : 'warning' },
+        headers: { Title: 'agentry', Tags: kind === 'review' ? 'eyes' : kind === 'pr_open' ? 'rocket' : kind === 'merged' ? 'tada' : 'warning' },
       });
     } catch (e) { console.error(`notify ntfy: ${e.message}`); }
   }

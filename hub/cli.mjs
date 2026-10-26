@@ -7,20 +7,24 @@ import { basename, join, resolve } from 'node:path';
 import { KIT } from '../lib/util.mjs';
 import { actions } from './actions.mjs';
 import { importCreate, importList, notifyTickets } from './stages.mjs';
+import { createWithImages, fromFile } from './attachments.mjs';
 import { daemonPid, serve } from './daemon.mjs';
+import { e2eLog, runE2e } from './e2e.mjs';
 import { repoCommands } from './pipeline.mjs';
-import { createTicket, getTicket, listTickets, loadConfig, normId, paths, readText, saveConfig } from './store.mjs';
+import { getTicket, listTickets, loadConfig, normId, paths, PREFIX_RE, readText, repoPrefix, saveConfig } from './store.mjs';
 import { uiUrl } from './server.mjs';
 import { tg } from './telegram.mjs';
 
 const HELP = `kit hub — local ticket loop (plan → code → verify → review → commit → STOP for your approval)
 
-  setup     init · repo add <path> [--name n] [--base main] [--setup "cmd"] [--verify "a && b" | none] · repo ls · repo rm <name>
+  setup     init · repo add <path> [--name n] [--base main] [--prefix PIX] [--setup "cmd"] [--verify "a && b" | none] · repo ls · repo rm <name>
             telegram <bot-token> · ntfy [topic] · autostart · config [key] [value]  (e.g. engines.plan.model sonnet)
   daemon    start · down · status · serve (foreground) · logs [n] · ui (open the control panel; starts the daemon)
   tickets   add <repo|path> "<title>" [--desc "…" | --desc-file f] [--key KEY-1] [--url u] [--quick] [--backlog] · ls [--status s] [--repo r] · show <id>
-            run|stop|approve|reject|done <id> · changes <id> "<text>" · answer <id> "<text>"
+            bug <repo|path> "<title>" [--desc …] [--img a.png,b.png] [--severity low|medium|high|critical] [--key KEY-1] [--url u] [--backlog]
+            run|plan|stop|approve|reject|reopen|done|verify <id> · changes|answer|broken <id> "<text>"
             import (list from import.command) · import <key…> [--backlog] · notify <id…> (repo notify command)
+  e2e       e2e <repo>  run the Playwright suite on the latest base (no tokens); failing tests → bug tickets
 
   --quick: no Claude plan; opencode works from the ticket text (cheapest, for small changes).
   Data: ${paths.config.replace(/hub\.json$/, '')}  (override with KIT_HUB_DIR)`;
@@ -31,7 +35,7 @@ function defaultBase(path) {
   return spawnSync('git', ['branch', '--show-current'], { cwd: path, encoding: 'utf8' }).stdout.trim() || 'main';
 }
 
-const fmt = (t) => `${t.id.padEnd(5)} ${t.status.padEnd(10)} ${t.repo.padEnd(18).slice(0, 18)} ${t.mode === 'quick' ? '⚡' : ' '} ${t.key ? `${t.key} · ` : ''}${t.title}`;
+const fmt = (t) => `${t.id.padEnd(7)} ${t.status.padEnd(10)} ${t.repo.padEnd(18).slice(0, 18)} ${t.mode === 'quick' ? '⚡' : ' '} ${t.key ? `${t.key} · ` : ''}${t.title}`;
 
 export async function hub([cmd = 'help', ...pos], flags) {
   const cfg = loadConfig();
@@ -46,18 +50,20 @@ export async function hub([cmd = 'help', ...pos], flags) {
         const path = resolve(arg || '.');
         if (!existsSync(join(path, '.git'))) throw new Error(`${path} is not a git repo root`);
         const name = flags.name || basename(path);
-        cfg.repos[name] = { path: path.replaceAll('\\', '/'), base: flags.base || defaultBase(path) };
+        const prefix = flags.prefix?.toUpperCase() || cfg.repos[name]?.prefix;
+        if (prefix && !PREFIX_RE.test(prefix)) throw new Error(`--prefix must be 1–8 letters/digits starting with a letter (e.g. PIX), got "${flags.prefix}"`);
+        cfg.repos[name] = { path: path.replaceAll('\\', '/'), base: flags.base || defaultBase(path), ...(prefix ? { prefix } : {}) };
         if (flags.setup !== undefined) cfg.repos[name].setup = flags.setup;
         if (flags.verify) cfg.repos[name].verify = flags.verify === 'none' ? [] : flags.verify.split('&&').map((s) => s.trim()).filter(Boolean);
         saveConfig(cfg);
         const c = repoCommands(cfg.repos[name]);
-        return `repo "${name}" → ${path} (base ${cfg.repos[name].base})\n  setup:  ${c.setup || '(none)'}\n  verify: ${c.verify.join(' && ') || '(none — add --verify "…")'}`;
+        return `repo "${name}" → ${path} (base ${cfg.repos[name].base}, tickets ${repoPrefix(name, cfg.repos[name])}-1, -2 …)\n  setup:  ${c.setup || '(none)'}\n  verify: ${c.verify.join(' && ') || '(none — add --verify "…")'}`;
       }
       if (sub === 'rm') { delete cfg.repos[arg]; saveConfig(cfg); return `removed ${arg}`; }
-      return Object.entries(cfg.repos).map(([n, r]) => `${n.padEnd(20)} ${r.path} (${r.base})`).join('\n') || 'no repos';
+      return Object.entries(cfg.repos).map(([n, r]) => `${n.padEnd(20)} ${repoPrefix(n, r).padEnd(6)} ${r.path} (${r.base})`).join('\n') || 'no repos';
     }
 
-    case 'add': {
+    case 'add': case 'bug': {
       const [repoArg, ...title] = pos;
       let repo = repoArg;
       let note = '';
@@ -75,8 +81,12 @@ export async function hub([cmd = 'help', ...pos], flags) {
       const descFile = flags['desc-file'];
       const desc = descFile ? readFileSync(descFile, 'utf8') : flags.desc || '';
       if (descFile && /[\\/]\.kit[\\/]handoff[\\/]/.test(resolve(descFile))) rmSync(descFile); // /ticket draft; now stored in the ticket
-      const t = createTicket({ repo, title: title.join(' '), description: desc.trim(), status: flags.backlog ? 'backlog' : 'ready', mode: flags.quick ? 'quick' : 'full', key: flags.key || '', url: flags.url || '' });
-      return `${note}${t.key ? `${t.key} ` : ''}${t.id} ${t.status}${t.mode === 'quick' ? ' (quick)' : ''}: ${t.title}${daemonPid() ? '' : '\n(daemon not running: kit hub start)'}`;
+      // --img: comma-separated screenshot paths (e.g. a failed e2e test's screenshot). Not downscaled here: keep them ≤1568px.
+      const images = String(flags.img || '').split(',').map((s) => s.trim()).filter(Boolean).map((p) => fromFile(resolve(p)));
+      const bug = cmd === 'bug';
+      const t = createWithImages({ repo, title: title.join(' '), description: desc.trim(), status: flags.backlog ? 'backlog' : 'ready', mode: flags.quick ? 'quick' : 'full',
+        key: flags.key || '', url: flags.url || '', kind: bug ? 'bug' : 'feature', severity: bug ? flags.severity || '' : '' }, images);
+      return `${note}${t.key ? `${t.key} ` : ''}${t.id} ${bug ? `🐞 ${t.severity} ` : ''}${t.status}${t.mode === 'quick' ? ' (quick)' : ''}: ${t.title}${images.length ? ` · ${images.length} screenshot(s)` : ''}${daemonPid() ? '' : '\n(daemon not running: kit hub start)'}`;
     }
     case 'config': {
       // kit hub config engines.plan.model opus   ·   kit hub config (prints, token hidden)
@@ -106,10 +116,17 @@ export async function hub([cmd = 'help', ...pos], flags) {
         t.error && `error: ${t.error}`, t.pr && `PR: ${t.pr}`, readText(t.id, 'summary.md'),
         'history:', ...t.history.slice(-8).map((h) => `  ${h.at.slice(5, 16)} ${h.text}`)].filter(Boolean).join('\n');
     }
-    case 'run': case 'stop': case 'approve': case 'reject': case 'done':
+    case 'e2e': {
+      const name = cfg.repos[pos[0]] ? pos[0] : Object.keys(cfg.repos).find((n) => resolve(cfg.repos[n].path) === resolve(pos[0] || '.'));
+      if (!name) throw new Error(`unknown repo "${pos[0] || '.'}"`);
+      const r = await runE2e(name);
+      return r.status === 'error' ? `e2e ${name}: error\n${r.error}\nlog: ${e2eLog(name)}`
+        : `e2e ${name} @ ${r.sha.slice(0, 7)}: ${r.passed} passed · ${r.failed} failed · ${r.flaky} flaky · ${r.skipped} skipped${r.filed.length ? `\nnew bugs: ${r.filed.join(' ')}` : ''}${r.still.length ? `\nstill failing: ${r.still.join(' ')}` : ''}${r.verified.length ? `\nverified fixed: ${r.verified.join(' ')}` : ''}\nlog: ${e2eLog(name)}`;
+    }
+    case 'run': case 'plan': case 'reopen': case 'stop': case 'approve': case 'reject': case 'done': case 'verify': case 'broken':
     case 'changes': case 'answer': {
       const t = actions[cmd](pos[0], pos.slice(1).join(' '));
-      return `${t.id} → ${t.status}${t.cancel ? ' (cancelling)' : ''}`;
+      return `${t.id} → ${t.status}${t.cancel ? ' (cancelling)' : ''}${cmd === 'verify' ? ' (verified)' : cmd === 'broken' ? ` · new bug ${t.reopenedAs}` : ''}`;
     }
 
     case 'start': {
@@ -153,7 +170,7 @@ export async function hub([cmd = 'help', ...pos], flags) {
       saveConfig(cfg);
       await tg('setMyCommands', { commands: [
         ['new', 'Queue a ticket: /new <repo> <title>'], ['quick', 'Small change, opencode only'], ['draft', 'Ticket into backlog'],
-        ['list', 'Active tickets'], ['t', 'Show ticket: /t T3'], ['status', 'Loop status'], ['repos', 'Configured repos'],
+        ['list', 'Active tickets'], ['t', 'Show ticket: /t PIX-3'], ['status', 'Loop status'], ['repos', 'Configured repos'],
         ['pause', 'Pause the loop'], ['resume', 'Resume the loop'], ['help', 'Help'],
       ].map(([command, description]) => ({ command, description })) }, token);
       return `bot @${me.username} configured.\nOn your phone: open t.me/${me.username} and send:  /pair ${cfg.telegram.pairCode}\n(the daemon must be running: kit hub start)`;

@@ -24,4 +24,4 @@ if (kind === 'test') {
   writeFileSync(process.env.FAKE_VERDICTS, q.join('\n'));
   result = `VERDICT: ${v}\nnpm test: ${v === 'PASS' ? '3 passed' : '1 failed'}${v === 'FAIL' ? '\n`adds a line` — expected 2 lines' : ''}`;
 }
-process.stdout.write(JSON.stringify({ result, total_cost_usd: 0.001, is_error: false }));
+process.stdout.write(`${JSON.stringify({ type: 'result', result, total_cost_usd: 0.001, is_error: false })}\n`);

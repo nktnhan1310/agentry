@@ -2,25 +2,32 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { isDir, walk } from '../lib/util.mjs';
+import { listAttachments } from './attachments.mjs';
+import { loadQuestions } from './questions.mjs';
 import { getTicket, normId, readText, ticketFile } from './store.mjs';
 
 const bad = (msg) => { throw new Error(msg); };
 export const MEDIA = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', webm: 'video/webm', mp4: 'video/mp4',
   txt: 'text/plain', md: 'text/plain', log: 'text/plain', json: 'text/plain', trx: 'text/plain', xml: 'text/plain' };
 
+const tokenTotal = (t) => Object.values(t.tokens || {}).reduce((a, s) => ({ in: a.in + s.in, out: a.out + s.out }), { in: 0, out: 0 });
+
 export function ticketSummary(t) {
-  return { id: t.id, key: t.key || '', url: t.url || '', repo: t.repo, title: t.title, status: t.status, stage: t.stage || '', mode: t.mode, iterations: t.iterations,
-    cost: t.cost?.claudeUsd || 0, pr: t.pr, notifiedAt: t.notifiedAt || '', error: (t.error || '').split('\n')[0].slice(0, 160), updatedAt: t.updatedAt, cancel: !!t.cancel };
+  return { id: t.id, key: t.key || '', url: t.url || '', repo: t.repo, title: t.title, status: t.status, stage: t.stage || '', mode: t.mode,
+    kind: t.kind || 'feature', severity: t.severity || '', verifiedAt: t.verifiedAt || '', iterations: t.iterations,
+    cost: t.cost?.claudeUsd || 0, pr: t.pr, autoMerge: t.autoMerge || '', stageAt: t.stageAt || '', tokens: tokenTotal(t), planOnly: !!t.planOnly,
+    planned: existsSync(ticketFile(t.id, 'brief.md')), notifiedAt: t.notifiedAt || '', error: (t.error || '').split('\n')[0].slice(0, 160), updatedAt: t.updatedAt, cancel: !!t.cancel };
 }
 
 export function ticketDetail(id) {
   const t = getTicket(normId(id));
   const dir = ticketFile(t.id, 'logs');
   const logs = existsSync(dir) ? readdirSync(dir).map((n) => { const s = statSync(join(dir, n)); return { name: n.replace(/\.log$/, ''), size: s.size, mtime: s.mtimeMs }; }).sort((a, b) => a.mtime - b.mtime) : [];
-  const files = Object.fromEntries(['brief.md', 'questions.md', 'worker.md', 'review.md', 'summary.md', 'test.md', 'comment.md', 'pr-body.md'].map((f) => [f.replace('.md', '').replace('pr-body', 'prBody'), readText(t.id, f)]));
+  const files = Object.fromEntries(['brief.md', 'questions.md', 'worker.md', 'review.md', 'summary.md', 'notes.md', 'test.md', 'comment.md', 'pr-body.md'].map((f) => [f.replace('.md', '').replace('pr-body', 'prBody'), readText(t.id, f)]));
   const ev = ticketFile(t.id, 'evidence');
   const evidence = isDir(ev) ? walk(ev).map((f) => ({ path: f, size: statSync(join(ev, f)).size, type: MEDIA[f.split('.').pop().toLowerCase()] || '' })) : [];
-  return { ...t, files, evidence, diffChars: readText(t.id, 'diff.patch').length, logs };
+  return { ...t, kind: t.kind || 'feature', files, evidence, attachments: listAttachments(t.id), questionsData: t.status === 'needs_info' ? loadQuestions(t.id) : null,
+    diffChars: readText(t.id, 'diff.patch').length, logs };
 }
 
 // Repo fields edited as one JSON block in the panel ("Advanced"); the block replaces these keys.

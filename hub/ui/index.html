@@ -4,138 +4,333 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>agentry hub</title>
-<script>
-// Apply a saved light/dark choice before first paint (no flash). "auto" = no attribute = follow the OS.
-try { const t = localStorage.getItem('kit-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch { /* storage blocked */ }
-</script>
+<script>try { const t = localStorage.getItem('kit-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch {}</script>
 <style>
 :root {
-  color-scheme: light dark;
-  --bg: #f6f7f9; --panel: #fff; --sunken: #f0f2f5; --line: #e2e5ea; --text: #1d2330; --muted: #6a7282; --accent: #3b5bdb; --accent-ink: #fff;
-  --ok: #2b8a3e; --warn: #c27c0e; --bad: #c92a2a; --info: #1971c2; --violet: #7048e8;
-  --add-bg: #e6f6ea; --del-bg: #fdecec; --hunk: #6741d9;
-  --radius: 8px; --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  color-scheme: light;
+  --bg: #f6f7fb; --panel: #ffffff; --sunken: #f0f2f7; --hover: #e9ecf4; --line: #e4e7ef; --line-strong: #d3d8e4;
+  --text: #161a23; --muted: #646d82; --faint: #98a0b3;
+  --accent: #5b5bd6; --accent-ink: #ffffff; --accent-soft: #ececfd;
+  --ok: #16a34a; --warn: #d97706; --bad: #dc2626; --info: #2563eb; --violet: #7c3aed;
+  --add-bg: #e7f7ec; --del-bg: #fdecec; --hunk: #6d4ad8;
+  --term-bg: #0f1218; --term-text: #d2d8e4;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, .05); --shadow: 0 1px 3px rgba(16, 24, 40, .06), 0 4px 12px rgba(16, 24, 40, .05);
+  --shadow-lg: 0 12px 40px rgba(16, 24, 40, .18);
+  --radius: 12px; --radius-sm: 8px;
+  --sans: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
 }
-:root[data-theme="light"] { color-scheme: light; }
-:root[data-theme="dark"] { color-scheme: dark; }
-/* Dark tokens: the OS preference unless the user picked light, or an explicit dark choice. */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --bg: #111318; --panel: #181b22; --sunken: #20242d; --line: #2b303b; --text: #e3e6ec; --muted: #8f97a6; --accent: #748ffc; --accent-ink: #0d1020;
-    --ok: #51cf66; --warn: #fcc419; --bad: #ff6b6b; --info: #4dabf7; --violet: #9775fa; --add-bg: #12301b; --del-bg: #3a1618; --hunk: #b197fc; }
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0c0e13; --panel: #14171f; --sunken: #1a1e28; --hover: #222736; --line: #252a37; --line-strong: #333a4c;
+    --text: #e6e8ee; --muted: #8e96aa; --faint: #616a80;
+    --accent: #8d8ef7; --accent-ink: #0c0e1d; --accent-soft: #23244a;
+    --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --info: #60a5fa; --violet: #a78bfa;
+    --add-bg: #11291a; --del-bg: #351619; --hunk: #b9a2fc;
+    --term-bg: #090b0f; --shadow-sm: none; --shadow: 0 1px 0 rgba(255, 255, 255, .03) inset; --shadow-lg: 0 16px 48px rgba(0, 0, 0, .6);
+  }
 }
-:root[data-theme="dark"] { --bg: #111318; --panel: #181b22; --sunken: #20242d; --line: #2b303b; --text: #e3e6ec; --muted: #8f97a6; --accent: #748ffc; --accent-ink: #0d1020;
-  --ok: #51cf66; --warn: #fcc419; --bad: #ff6b6b; --info: #4dabf7; --violet: #9775fa; --add-bg: #12301b; --del-bg: #3a1618; --hunk: #b197fc; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0c0e13; --panel: #14171f; --sunken: #1a1e28; --hover: #222736; --line: #252a37; --line-strong: #333a4c;
+  --text: #e6e8ee; --muted: #8e96aa; --faint: #616a80;
+  --accent: #8d8ef7; --accent-ink: #0c0e1d; --accent-soft: #23244a;
+  --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --info: #60a5fa; --violet: #a78bfa;
+  --add-bg: #11291a; --del-bg: #351619; --hunk: #b9a2fc;
+  --term-bg: #090b0f; --shadow-sm: none; --shadow: 0 1px 0 rgba(255, 255, 255, .03) inset; --shadow-lg: 0 16px 48px rgba(0, 0, 0, .6);
+}
+
 * { box-sizing: border-box; }
-body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+html, body { background: var(--bg); }
+body { margin: 0; font: 14px/1.5 var(--sans); color: var(--text); -webkit-font-smoothing: antialiased; }
 a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
 button, input, select, textarea { font: inherit; color: inherit; }
-button { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 5px 11px; cursor: pointer; white-space: nowrap; }
-button:hover { border-color: var(--muted); }
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+
+.ic { width: 16px; height: 16px; flex: none; vertical-align: -3px; }
+button, .btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-strong); background: var(--panel); border-radius: var(--radius-sm);
+  padding: 6px 12px; cursor: pointer; white-space: nowrap; font-weight: 500; font-size: 13px; box-shadow: var(--shadow-sm); transition: background .12s, border-color .12s, transform .05s; color: var(--text); }
+button:hover, .btn:hover { background: var(--hover); text-decoration: none; }
+button:active { transform: translateY(1px); }
+button.primary, .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.primary:hover, .btn.primary:hover { background: color-mix(in srgb, var(--accent) 88%, var(--text)); }
 button.danger { color: var(--bad); }
-button.small { padding: 2px 8px; font-size: 12px; }
+button.danger:hover { background: color-mix(in srgb, var(--bad) 10%, var(--panel)); border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
+button.ghost { border-color: transparent; background: transparent; box-shadow: none; color: var(--muted); }
+button.ghost:hover { background: var(--hover); color: var(--text); }
+button.small, .btn.small { padding: 3px 9px; font-size: 12px; border-radius: 6px; }
+button.icon { padding: 6px; }
 button:disabled { opacity: .5; cursor: default; }
-input, select, textarea { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 6px 8px; width: 100%; }
-textarea { font-family: var(--mono); font-size: 12.5px; resize: vertical; }
-label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+
+input, select, textarea { border: 1px solid var(--line-strong); background: var(--panel); border-radius: var(--radius-sm); padding: 7px 10px; width: 100%; transition: border-color .12s, box-shadow .12s; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accent); }
+textarea { font-family: var(--mono); font-size: 12.5px; line-height: 1.55; resize: vertical; }
+label { display: block; font-size: 12px; font-weight: 500; color: var(--muted); margin: 12px 0 5px; }
 pre { margin: 0; font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }
-code { font-family: var(--mono); font-size: 12.5px; }
-h2 { font-size: 17px; margin: 0; } h3 { font-size: 13px; margin: 18px 0 8px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+code { font-family: var(--mono); font-size: 12px; background: var(--sunken); border: 1px solid var(--line); padding: 1px 6px; border-radius: 5px; }
+h2 { font-size: 19px; font-weight: 650; letter-spacing: -.01em; margin: 0; }
+h3 { font-size: 11.5px; font-weight: 600; margin: 22px 0 8px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 
-header { display: flex; align-items: center; gap: 14px; padding: 10px 18px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
-header .brand { font-weight: 650; }
-nav { display: flex; gap: 2px; }
-nav a { padding: 5px 10px; border-radius: 6px; color: var(--muted); }
-nav a.on { background: var(--sunken); color: var(--text); text-decoration: none; }
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-.seg button { border: 0; border-radius: 0; padding: 3px 9px; font-size: 12px; background: transparent; color: var(--muted); }
-.seg button + button { border-left: 1px solid var(--line); }
-.seg button.on { background: var(--sunken); color: var(--text); }
+/* shell */
+header { display: flex; align-items: center; gap: 16px; padding: 10px 24px; background: color-mix(in srgb, var(--panel) 85%, transparent);
+  backdrop-filter: saturate(1.6) blur(10px); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -.01em; font-size: 15px; color: var(--text); }
+.brand:hover { text-decoration: none; }
+.logo { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, #7c7cf2, #5b5bd6 55%, #8b5cf6); box-shadow: 0 2px 8px rgba(91, 91, 214, .35); }
+.brand small { font-weight: 500; color: var(--muted); font-size: 12px; }
+nav { display: flex; gap: 2px; padding: 3px; background: var(--sunken); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+nav a { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 7px; color: var(--muted); font-weight: 500; font-size: 13px; white-space: nowrap; }
+nav a:hover { color: var(--text); text-decoration: none; }
+nav a.on { background: var(--panel); color: var(--text); box-shadow: var(--shadow-sm), 0 0 0 1px var(--line); }
+.count { font-size: 11px; font-weight: 600; min-width: 18px; padding: 0 6px; height: 18px; line-height: 18px; text-align: center; border-radius: 9px; background: var(--hover); color: var(--muted); }
+.count.hot { background: var(--accent); color: var(--accent-ink); }
 .grow { flex: 1; }
-.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--muted); margin-right: 6px; }
-.dot.on { background: var(--ok); } .dot.paused { background: var(--warn); }
-main { padding: 16px 18px 40px; max-width: 1500px; margin: 0 auto; }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
-.muted { color: var(--muted); } .small { font-size: 12px; }
-.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.split { display: grid; grid-template-columns: 300px 1fr; gap: 16px; align-items: start; }
-@media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+.loop { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); padding: 4px 4px 4px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); }
+.loop button { border-radius: 999px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--faint); flex: none; }
+.dot.on { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+.dot.paused { background: var(--warn); }
+main { padding: 24px 24px 64px; max-width: 1560px; margin: 0 auto; }
+@media (max-width: 760px) {
+  header { flex-wrap: wrap; padding: 10px 16px; gap: 10px; }
+  header nav { order: 5; width: 100%; }
+  .brand small, .loop .txt { display: none; }
+  main { padding: 16px 16px 48px; }
+}
 
-/* workflow strip */
-.flow { display: flex; align-items: stretch; gap: 0; overflow-x: auto; margin-bottom: 16px; }
-.step { flex: 1; min-width: 104px; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); position: relative; }
-.step + .step { border-left: none; }
-.step:first-child { border-radius: var(--radius) 0 0 var(--radius); } .step:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
-.step b { display: block; font-size: 12.5px; } .step span { font-size: 11.5px; color: var(--muted); }
-.step.claude { box-shadow: inset 0 3px 0 var(--violet); } .step.opencode { box-shadow: inset 0 3px 0 var(--info); }
-.step.shell { box-shadow: inset 0 3px 0 var(--muted); } .step.human { box-shadow: inset 0 3px 0 var(--warn); }
-.step.done { background: color-mix(in srgb, var(--ok) 9%, var(--panel)); }
-.step.now { background: color-mix(in srgb, var(--accent) 16%, var(--panel)); }
-.step.now b::after { content: " ●"; color: var(--accent); animation: pulse 1.2s infinite; }
-.step.stuck { background: color-mix(in srgb, var(--bad) 12%, var(--panel)); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); }
+.muted { color: var(--muted); } .faint { color: var(--faint); } .small { font-size: 12.5px; } .mono { font-family: var(--mono); }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.split { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+.pagehead { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.pagehead p { margin: 4px 0 0; }
+
+/* pills & chips */
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 2px 9px 2px 8px; border-radius: 999px; white-space: nowrap;
+  color: var(--tone); background: color-mix(in srgb, var(--tone) 12%, transparent); border: 1px solid color-mix(in srgb, var(--tone) 22%, transparent); }
+.pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill .ic { width: 13px; height: 13px; vertical-align: 0; }
+.pill.live i { animation: pulse 1.2s infinite; }
+.t-neutral { --tone: var(--muted); } .t-accent { --tone: var(--accent); } .t-warn { --tone: var(--warn); } .t-bad { --tone: var(--bad); }
+.t-ok { --tone: var(--ok); } .t-info { --tone: var(--info); } .t-violet { --tone: var(--violet); }
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; padding: 1px 8px; border-radius: 6px; background: var(--sunken); color: var(--muted); border: 1px solid var(--line); white-space: nowrap; }
+a.chip:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); text-decoration: none; }
+.b-ok { color: var(--ok); } .b-modified { color: var(--warn); } .b-missing, .b-over { color: var(--bad); }
+@keyframes pulse { 50% { opacity: .25; } }
+
+/* stats */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+@media (max-width: 900px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); color: var(--text); display: block; }
+a.stat:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); text-decoration: none; }
+.stat span { font-size: 12px; color: var(--muted); font-weight: 500; display: flex; align-items: center; gap: 6px; }
+.stat b { display: block; font-size: 24px; font-weight: 650; letter-spacing: -.02em; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+/* workflow stepper */
+.flow { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.step { flex: 1; min-width: 118px; display: flex; gap: 9px; align-items: flex-start; padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; position: relative; }
+.step .num { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 650; background: var(--sunken); color: var(--muted); border: 1px solid var(--line); }
+.step b { display: block; font-size: 12.5px; font-weight: 600; }
+.step .d { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--muted); line-height: 1.35; }
+.step .eng { width: 7px; height: 7px; border-radius: 2px; flex: none; }
+.step.claude .eng { background: var(--violet); } .step.opencode .eng { background: var(--info); } .step.shell .eng { background: var(--faint); } .step.human .eng { background: var(--warn); }
+.step.done .num { background: var(--ok); border-color: var(--ok); color: #fff; }
+.step.now { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
+.step.now .num { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); animation: pulse 1.4s infinite; }
+.step.stuck { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); background: color-mix(in srgb, var(--bad) 7%, var(--panel)); }
+.step.stuck .num { background: var(--bad); border-color: var(--bad); color: #fff; }
 .step.skip { opacity: .45; }
-@keyframes pulse { 50% { opacity: .2; } }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 8px; height: 8px; border-radius: 2px; }
+details.how { margin-bottom: 20px; }
+details.how summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 10px; user-select: none; }
+details.how summary::-webkit-details-marker { display: none; }
+details.how summary::before { content: "›"; display: inline-block; transition: transform .15s; font-size: 16px; line-height: 1; }
+details.how[open] summary::before { transform: rotate(90deg); }
 
 /* board */
-.cols { display: grid; grid-template-columns: repeat(5, minmax(210px, 1fr)); gap: 12px; overflow-x: auto; }
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.toolbar select { width: auto; min-width: 160px; padding: 5px 10px; }
+.seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--sunken); border: 1px solid var(--line); border-radius: 9px; }
+.seg button { border: none; background: none; box-shadow: none; padding: 4px 11px; font-size: 12.5px; color: var(--muted); border-radius: 6px; }
+.seg button:hover { color: var(--text); background: none; }
+.seg button.on { background: var(--panel); color: var(--text); box-shadow: var(--shadow-sm), 0 0 0 1px var(--line); }
+.cols { display: grid; grid-template-columns: repeat(5, minmax(230px, 1fr)); gap: 14px; overflow-x: auto; padding-bottom: 6px; }
 @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
-.col h4 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; display: flex; justify-content: space-between; }
-.card { display: block; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 9px 10px; margin-bottom: 8px; color: var(--text); }
-.card:hover { border-color: var(--accent); text-decoration: none; }
-.card .t { font-weight: 550; margin: 3px 0; }
-.cardw { position: relative; } .nsel { position: absolute; right: 9px; bottom: 7px; margin: 0; } .nsel input { width: auto; }
-.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
-.gallery figure { margin: 0; } .gallery img, .gallery video { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: var(--sunken); }
-.badge { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--sunken); color: var(--muted); border: 1px solid var(--line); }
-.s-running { color: var(--accent); } .s-review, .s-needs_info { color: var(--warn); } .s-failed { color: var(--bad); }
-.s-pr_open, .s-done { color: var(--ok); } .s-approved { color: var(--info); }
-.b-ok { color: var(--ok); } .b-modified { color: var(--warn); } .b-missing, .b-over { color: var(--bad); }
+.col { background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; min-height: 120px; }
+.col h4 { margin: 2px 4px 10px; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.col h4 i { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); }
+.card { display: block; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; margin-bottom: 8px; color: var(--text); cursor: pointer;
+  box-shadow: var(--shadow-sm); transition: border-color .12s, box-shadow .12s, transform .12s; }
+.card:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); box-shadow: var(--shadow); transform: translateY(-1px); }
+.card .top { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.card .id { font-family: var(--mono); font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.card .t { font-weight: 550; margin: 6px 0 8px; line-height: 1.4; }
+.card .meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11.5px; color: var(--faint); }
+.card .errline { font-size: 12px; color: var(--bad); margin: -2px 0 8px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.empty { text-align: center; padding: 18px 8px; color: var(--faint); font-size: 12.5px; border: 1px dashed var(--line-strong); border-radius: 10px; }
+.hero { text-align: center; padding: 48px 20px; }
+.hero .logo { width: 48px; height: 48px; border-radius: 14px; margin: 0 auto 14px; }
+.hero p { max-width: 460px; margin: 8px auto 18px; color: var(--muted); }
+
+/* pull requests */
+.prs { padding: 0; overflow: hidden; }
+.pr { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); align-items: start; }
+.pr:last-child { border-bottom: none; }
+.pr:hover { background: color-mix(in srgb, var(--sunken) 60%, transparent); }
+.pr .ic { width: 18px; height: 18px; margin-top: 2px; }
+.pr .title { font-weight: 600; color: var(--text); font-size: 14.5px; }
+.pr .title:hover { color: var(--accent); }
+.pr .sub { display: flex; gap: 6px 10px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--muted); margin-top: 4px; }
+.pr .side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.diffstat { font-family: var(--mono); font-size: 12px; } .diffstat .a { color: var(--ok); } .diffstat .r { color: var(--bad); }
+.warnbar { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; padding: 10px 14px; border-radius: 10px; margin-bottom: 12px;
+  background: color-mix(in srgb, var(--warn) 9%, var(--panel)); border: 1px solid color-mix(in srgb, var(--warn) 30%, var(--line)); }
 
 /* ticket */
-.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: 14px 0 12px; flex-wrap: wrap; }
-.tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); padding: 7px 12px; }
+.back { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); font-weight: 500; }
+.back:hover { color: var(--text); text-decoration: none; }
+/* ticket page: sibling tickets on the left, prev/next on top */
+.tlayout { display: grid; grid-template-columns: 272px minmax(0, 1fr); gap: 24px; align-items: start; }
+.tside { position: sticky; top: 76px; max-height: calc(100vh - 96px); display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.tside .sh { padding: 12px 12px 10px; border-bottom: 1px solid var(--line); }
+.tside .sh b { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 8px; }
+.tside .sh input { padding: 5px 9px; font-size: 12.5px; }
+.tside .sl { overflow-y: auto; padding: 4px 6px 10px; }
+.tgrp > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--faint); text-transform: uppercase; letter-spacing: .06em; padding: 12px 8px 4px; user-select: none; }
+.tgrp > summary::-webkit-details-marker { display: none; }
+.tgrp > summary::before { content: "›"; font-size: 13px; line-height: 1; transition: transform .15s; }
+.tgrp[open] > summary::before { transform: rotate(90deg); }
+.titem { display: grid; grid-template-columns: 7px 34px minmax(0, 1fr); gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; color: var(--text); font-size: 12.5px; }
+.titem:hover { background: var(--hover); text-decoration: none; }
+.titem.on { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.titem > i { width: 7px; height: 7px; border-radius: 50%; background: var(--tone); }
+.titem.live > i { animation: pulse 1.2s infinite; }
+.titem .id { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--muted); }
+.titem .tt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.titem.on .tt { font-weight: 600; }
+.tnav { display: flex; align-items: center; gap: 6px; }
+.tnav .btn { color: var(--muted); }
+.tnav .btn.off { opacity: .4; pointer-events: none; }
+@media (max-width: 1100px) { .tlayout { grid-template-columns: minmax(0, 1fr); } .tside { display: none; } }
+.thead { margin: 12px 0 16px; }
+.thead h2 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.thead h2 .id { font-family: var(--mono); font-size: 15px; color: var(--muted); font-weight: 600; }
+.metas { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+.metas span { display: inline-flex; align-items: center; gap: 6px; }
+.metas b { color: var(--text); font-weight: 500; }
+.prbanner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; border-radius: var(--radius); margin-bottom: 16px;
+  background: color-mix(in srgb, var(--ok) 8%, var(--panel)); border: 1px solid color-mix(in srgb, var(--ok) 30%, var(--line)); }
+.prbanner .ic { color: var(--ok); width: 20px; height: 20px; }
+.prbanner a.url { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0 4px; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 18px 0 16px; overflow-x: auto; }
+.tabs button { border: none; box-shadow: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); padding: 9px 12px; margin-bottom: -1px; }
+.tabs button:hover { color: var(--text); background: none; }
 .tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
 .diff { font-family: var(--mono); font-size: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow-x: auto; }
-.diff div { white-space: pre; padding: 0 10px; min-height: 17px; }
-.diff .add { background: var(--add-bg); } .diff .del { background: var(--del-bg); } .diff .hunk { color: var(--hunk); }
-.diff .file { background: var(--sunken); font-weight: 600; padding: 5px 10px; border-top: 1px solid var(--line); }
-.box { background: var(--sunken); border-radius: 6px; padding: 10px 12px; }
-.logbox { background: #0e1117; color: #d0d6e0; border-radius: var(--radius); padding: 10px 12px; max-height: 65vh; overflow: auto; }
-.history div { padding: 3px 0; border-bottom: 1px dashed var(--line); font-size: 12.5px; }
-.err { border-left: 3px solid var(--bad); }
+.diff div { white-space: pre; padding: 0 14px; min-height: 18px; line-height: 18px; }
+.diff .add { background: var(--add-bg); } .diff .del { background: var(--del-bg); } .diff .hunk { color: var(--hunk); background: color-mix(in srgb, var(--hunk) 6%, transparent); }
+.diff .file { background: var(--sunken); font-weight: 600; padding: 8px 14px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-family: var(--sans); font-size: 13px; }
+.diff .file:first-child { border-top: none; }
+.box { background: var(--sunken); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.logbox { background: var(--term-bg); color: var(--term-text); border-radius: var(--radius); padding: 14px 16px; max-height: 65vh; overflow: auto; border: 1px solid var(--line); }
+.history { border-left: 2px solid var(--line); margin-left: 6px; padding-left: 18px; }
+.history div { position: relative; padding: 6px 0 10px; font-size: 13px; }
+.history div::before { content: ""; position: absolute; left: -24px; top: 11px; width: 10px; height: 10px; border-radius: 50%; background: var(--panel); border: 2px solid var(--line-strong); }
+.history div:first-child::before { border-color: var(--accent); background: var(--accent); }
+.history time { display: block; font-size: 11.5px; color: var(--faint); }
+.err { border-left: 3px solid var(--bad); background: color-mix(in srgb, var(--bad) 6%, var(--sunken)); }
+.hint { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; margin-top: 12px; padding: 9px 12px; border-radius: 10px; background: var(--sunken); border: 1px solid var(--line); }
 
-/* lists */
-.list a { display: block; padding: 6px 9px; border-radius: 6px; color: var(--text); }
-.list a.on, .list a:hover { background: var(--sunken); text-decoration: none; }
-.list .grp { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 12px 9px 4px; }
+/* lists & tables */
+.list { padding: 8px; }
+.list a { display: block; padding: 8px 10px; border-radius: 8px; color: var(--text); }
+.list a.on { background: var(--accent-soft); }
+.list a:hover { background: var(--hover); text-decoration: none; }
+.list a.on:hover { background: var(--accent-soft); }
+.list .grp { font-size: 11px; font-weight: 600; color: var(--faint); text-transform: uppercase; letter-spacing: .06em; margin: 14px 10px 4px; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { font-size: 11.5px; color: var(--muted); font-weight: 500; }
+td, th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { font-size: 11px; color: var(--faint); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; background: var(--sunken); }
+tr:hover td { background: color-mix(in srgb, var(--sunken) 50%, transparent); }
+tr:last-child td { border-bottom: none; }
+.tablewrap { margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; overflow: auto; }
 
-dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text); width: min(620px, 94vw); padding: 18px; }
-dialog::backdrop { background: rgba(0,0,0,.35); }
-#toast { position: fixed; bottom: 18px; right: 18px; display: flex; flex-direction: column; gap: 6px; z-index: 20; }
-#toast div { background: var(--text); color: var(--bg); padding: 8px 12px; border-radius: 6px; max-width: 480px; white-space: pre-wrap; font-size: 13px; }
-#toast div.e { background: var(--bad); color: #fff; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
-.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 14px; }
+/* dialog & toast */
+dialog { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--text); width: min(620px, 94vw); padding: 24px; box-shadow: var(--shadow-lg); }
+dialog::backdrop { background: rgba(10, 12, 18, .45); backdrop-filter: blur(3px); }
+dialog[open] { animation: pop .16s ease-out; }
+@keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.98); } }
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 560px) { .choices { grid-template-columns: 1fr; } }
+.choice { margin: 0; display: block; cursor: pointer; padding: 12px 14px; border: 1px solid var(--line-strong); border-radius: 10px; color: var(--text); font-size: 13px; transition: border-color .12s, background .12s; }
+.choice b { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.choice span { display: block; color: var(--muted); font-size: 12px; font-weight: 400; margin-top: 3px; }
+.choice:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
+.check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 13px; margin: 14px 0 0; font-weight: 400; cursor: pointer; }
+#toast { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 30; }
+#toast div { display: flex; gap: 10px; align-items: flex-start; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-left: 3px solid var(--ok);
+  padding: 10px 14px; border-radius: 10px; max-width: 440px; white-space: pre-wrap; font-size: 13px; box-shadow: var(--shadow-lg); animation: pop .16s ease-out; }
+#toast div.e { border-left-color: var(--bad); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 16px; }
 @media (max-width: 700px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+.qcard { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; background: var(--panel); box-shadow: var(--shadow-sm); }
+.qq { display: flex; gap: 10px; font-weight: 550; margin-bottom: 12px; line-height: 1.5; }
+.qn { flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+.opts { display: grid; gap: 6px; padding-left: 34px; }
+label.opt { display: flex; gap: 10px; align-items: flex-start; margin: 0; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 9px; cursor: pointer; color: var(--text); font-size: 13px; font-weight: 400; line-height: 1.5; transition: border-color .12s, background .12s; }
+label.opt:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--line-strong)); }
+label.opt:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
+label.opt > input { margin-top: 3px; }
+label.opt .qother { display: block; padding: 5px 8px; margin-top: 6px; }
+@media (max-width: 600px) { .opts { padding-left: 0; } }
+.plbody { max-height: 52vh; overflow: auto; margin-top: 14px; padding-right: 4px; }
+.plitem { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; background: var(--panel); }
+.plitem:has(input[type=checkbox]:checked) { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: color-mix(in srgb, var(--accent) 4%, var(--panel)); }
+.plitem.off { opacity: .55; }
+.plitem > input { margin-top: 8px; }
+.plitem input.pltitle { border-color: transparent; background: transparent; padding: 3px 6px; font-weight: 550; flex: 1; min-width: 180px; width: auto; }
+.plitem input.pltitle:hover { border-color: var(--line); }
+.plitem details summary { cursor: pointer; margin: 2px 0 0 6px; font-size: 12px; color: var(--muted); }
+.plitem textarea { margin-top: 6px; font-family: var(--sans); font-size: 12.5px; }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--line-strong); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; display: inline-block; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line-strong); border-bottom-width: 2px; color: var(--muted); background: var(--panel); }
+/* bug screenshots */
+.chip.sev { color: var(--tone); background: color-mix(in srgb, var(--tone) 10%, transparent); border-color: color-mix(in srgb, var(--tone) 25%, transparent); }
+.drop { margin-top: 6px; border: 1.5px dashed var(--line-strong); border-radius: 10px; padding: 14px; text-align: center; color: var(--muted); font-size: 12.5px; cursor: pointer; transition: border-color .12s, background .12s; }
+.drop:hover, .drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, var(--panel)); }
+.shots { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.shot { position: relative; width: 104px; height: 68px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--sunken); }
+.shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.shot button { position: absolute; top: 3px; right: 3px; padding: 1px 3px; border-radius: 5px; }
+.shot span { position: absolute; left: 0; right: 0; bottom: 0; font-size: 10px; padding: 1px 5px; background: color-mix(in srgb, var(--panel) 85%, transparent); color: var(--muted); }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-top: 10px; }
+.gallery a { display: block; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--sunken); }
+.gallery img { width: 100%; height: 170px; object-fit: contain; display: block; }
+.gallery figure { margin: 0; } .gallery video { width: 100%; border: 1px solid var(--line); border-radius: 10px; background: var(--sunken); }
+.card { position: relative; } .nsel { position: absolute; right: 10px; bottom: 9px; margin: 0; } .nsel input { width: auto; }
 </style>
 </head>
 <body>
 <header>
-  <span class="brand">⚙ agentry hub</span>
+  <a class="brand" href="#/board"><span class="logo"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></span>agentry <small>hub</small></a>
   <nav id="nav">
-    <a href="#/board" data-v="board">Board</a><a href="#/repos" data-v="repos">Repos</a><a href="#/kit" data-v="kit">Kit</a><a href="#/settings" data-v="settings">Settings</a>
+    <a href="#/board" data-v="board">Board</a><a href="#/prs" data-v="prs">Pull requests <span id="prCount" class="count" hidden></span></a><a href="#/repos" data-v="repos">Repos</a><a href="#/kit" data-v="kit">Kit</a><a href="#/settings" data-v="settings">Settings</a>
   </nav>
-  <div id="theme" class="seg" role="group" aria-label="Color theme">
-    <button data-t="auto" title="Follow the system setting" onclick="setTheme('auto')">Auto</button><button data-t="light" title="Light" aria-label="Light" onclick="setTheme('light')">☀</button><button data-t="dark" title="Dark" aria-label="Dark" onclick="setTheme('dark')">☾</button>
-  </div>
   <span class="grow"></span>
-  <span id="loop" class="small muted"></span>
-  <button id="loopBtn" class="small"></button>
+  <span class="loop"><span id="loop"></span><button id="loopBtn" class="small ghost"></button></span>
+  <button id="themeBtn" class="icon ghost"></button>
   <button id="importBtn" style="display:none" onclick="importTickets()" title="Run the import command and pick tickets">⇩ Import</button>
-  <button class="primary" onclick="newTicket()">+ New ticket</button>
+  <button class="primary" onclick="newTicket()" title="New ticket (N)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New ticket</button>
 </header>
 <main id="view"></main>
 <div id="toast"></div>
@@ -147,7 +342,51 @@ const $ = (s, el = document) => el.querySelector(s);
 const js = (v) => esc(JSON.stringify(v));
 const esc = (s = '') => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const ago = (t) => { if (!t) return ''; const s = (Date.now() - new Date(t)) / 1000; return s < 60 ? 'just now' : s < 3600 ? `${s / 60 | 0}m ago` : s < 86400 ? `${s / 3600 | 0}h ago` : `${s / 86400 | 0}d ago`; };
-const ICON = { backlog: '📥', ready: '⏳', running: '⚙️', needs_info: '❓', review: '👀', approved: '🚀', pr_open: '🔗', failed: '💥', rejected: '🗑', done: '✅' };
+
+const PATHS = {
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  monitor: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  pr: '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M6 9v12"/>',
+  merged: '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>',
+  prclosed: '<circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v12M15 4l6 6M21 4l-6 6M18 13v2"/>',
+  branch: '<circle cx="6" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M6 9v6M18 9a9 9 0 0 1-9 9"/>',
+  refresh: '<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>',
+  ext: '<path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+  back: '<path d="M15 18l-6-6 6-6"/>', plus: '<path d="M12 5v14M5 12h14"/>',
+  play: '<path d="M7 4l13 8-13 8z"/>', pause: '<path d="M8 5v14M16 5v14"/>', stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>', x: '<path d="M18 6 6 18M6 6l12 12"/>', redo: '<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>',
+  copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>', spark: '<path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>', dollar: '<path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+  list: '<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>', pen: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>', image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>',
+  bug: '<rect x="8" y="6" width="8" height="14" rx="4"/><path d="M19 7l-3 2M5 7l3 2M19 19l-3-2M5 19l3-2M20 13h-4M4 13h4M10 4l1 2M14 4l-1 2"/>', inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5h13L22 12v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z"/>',
+};
+const ic = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${PATHS[n] || ''}</svg>`;
+
+// status → [label, tone]
+const ST = {
+  backlog: ['Backlog', 'neutral'], ready: ['Queued', 'neutral'], running: ['Running', 'accent'], needs_info: ['Needs info', 'warn'],
+  review: ['Ready for review', 'warn'], approved: ['Pushing…', 'info'], pr_open: ['PR open', 'ok'], failed: ['Failed', 'bad'], rejected: ['Rejected', 'neutral'], done: ['Done', 'ok'],
+};
+// A bug's status is read off its ticket status (one state machine, no drift): what the reporter cares about.
+const BUG_ST = {
+  backlog: ['Open', 'bad'], ready: ['Fixing', 'accent'], running: ['Fixing', 'accent'], needs_info: ['Needs info', 'warn'], review: ['Fix ready', 'warn'],
+  approved: ['Fix in PR', 'info'], pr_open: ['Fix in PR', 'info'], failed: ['Fix failed', 'bad'], rejected: ["Won't fix", 'neutral'], done: ['Fixed', 'ok'],
+};
+const SEV = { low: 'neutral', medium: 'info', high: 'warn', critical: 'bad' };
+const sevChip = (t) => (t.kind === 'bug' ? `<span class="chip sev t-${SEV[t.severity] || 'info'}" title="bug · ${esc(t.severity || 'medium')} severity">${ic('bug')}${esc(t.severity || 'medium')}</span>` : '');
+const bugPill = (t) => { if (t.kind !== 'bug') return ''; const [l, tone] = t.status === 'done' && t.verifiedAt ? ['Verified', 'ok'] : t.status === 'done' ? ['Fixed · needs verify', 'warn'] : BUG_ST[t.status] || [t.status, 'neutral']; return `<span class="pill t-${tone}" title="bug status"><i></i>Bug: ${l}</span>`; };
+const pill = (status, stage) => { const [l, tone] = ST[status] || [status, 'neutral']; return `<span class="pill t-${tone}${status === 'running' ? ' live' : ''}"><i></i>${l}${stage ? ` · ${esc(stage)}` : ''}</span>`; };
+// "4m", "1h 12m" since a timestamp
+const dur = (t) => { const s = Math.max(0, (Date.now() - new Date(t)) / 1000) | 0; return s < 60 ? `${s}s` : s < 3600 ? `${s / 60 | 0}m` : `${s / 3600 | 0}h ${(s % 3600) / 60 | 0}m`; };
+const kTok = (n) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n || 0));
+const tokSum = (byStep) => Object.values(byStep || {}).reduce((a, s) => ({ in: a.in + s.in, out: a.out + s.out }), { in: 0, out: 0 });
+const idNum = (id) => Number(String(id).match(/(\d+)$/)?.[1] || 0);
+const byIndex = (a, b) => (a.createdAt || '').localeCompare(b.createdAt || '') || idNum(a.id) - idNum(b.id); // creation order: ids are per repo (PIX-1) or legacy (T37)
+const prNum = (url) => ((url || '').match(/\/pull\/(\d+)/) || [])[1];
 
 async function api(method, path, body) {
   const res = await fetch(`/api/${path}`, { method, headers: method === 'GET' ? {} : { 'content-type': 'application/json', 'x-kit-ui': '1' }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -162,8 +401,22 @@ function toast(msg, isErr) {
 const guard = (fn) => async (...a) => { try { return await fn(...a); } catch (e) { toast(e.message, true); } };
 
 let S = null;            // /api/state
+let P = null;            // /api/prs
 let page = { v: 'board', sel: new Set() };
-let timer = null;
+
+// ---------------- theme ----------------
+const THEMES = [['system', 'monitor', 'System theme'], ['light', 'sun', 'Light theme'], ['dark', 'moon', 'Dark theme']];
+function theme(set) {
+  let cur = 'system';
+  try { cur = localStorage.getItem('kit-theme') || 'system'; } catch { /* storage blocked */ }
+  if (set) { cur = set; try { localStorage.setItem('kit-theme', set); } catch { /* storage blocked */ } }
+  if (cur === 'system') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = cur;
+  const [, icon, label] = THEMES.find(([k]) => k === cur) || THEMES[0];
+  $('#themeBtn').innerHTML = ic(icon); $('#themeBtn').title = `${label} — click to switch`;
+  return cur;
+}
+$('#themeBtn').onclick = () => { const i = THEMES.findIndex(([k]) => k === theme()); const next = THEMES[(i + 1) % THEMES.length]; theme(next[0]); toast(next[2]); };
+theme();
 
 // ---------------- workflow strip ----------------
 // Which optional stages a repo has (test, evidence, publish, notify); the board shows any repo's.
@@ -176,7 +429,7 @@ function stages(cfg, f = anyFlags()) {
   const st = [
     { k: 'setup', n: 'Setup', d: 'install deps', c: 'shell' },
     { k: 'plan', n: 'Plan', d: m(e.plan), c: e.plan.tool },
-    { k: 'code', n: 'Code', d: m(e.code), c: e.code.tool },
+    { k: 'code', n: 'Code', d: `${m(e.code)}${e.escalate?.after > 0 ? ` → ${e.escalate.model} after ${e.escalate.after} fail${e.escalate.after > 1 ? 's' : ''}` : ''}`, c: e.code.tool },
     { k: 'verify', n: 'Verify', d: 'your build check', c: 'shell' },
     { k: 'review', n: 'Review', d: `${m(e.review)} · skip <${cfg.review.skipUnderLines} lines`, c: e.review.tool },
   ];
@@ -202,36 +455,54 @@ function flow(cfg, t) {
     else if (t.status === 'failed') { const h = (t.history || []).map((x) => x.text).reverse().find((x) => /^(verify|plan|code|review|setup|commit|tests)/.test(x)) || ''; stuck = Math.max(0, idx(((h.match(/^(\w+)/) || [])[1] || '').replace('tests', 'test'))); doneUpTo = stuck - 1; }
   }
   return `<div class="flow">${st.map((s, i) => {
-    const cls = [s.c, i === now ? 'now' : '', i <= doneUpTo ? 'done' : '', i === stuck ? 'stuck' : '', t && t.mode === 'quick' && s.k === 'plan' ? 'skip' : ''].join(' ');
-    const d = t && t.mode === 'quick' && s.k === 'plan' ? 'skipped (quick)' : s.d;
-    const loop = s.k === 'code' ? ` <span title="code ⇄ verify ⇄ fix up to ${cfg.limits.fixIterations}×, review fix ${cfg.limits.reviewRounds}×">↺</span>` : '';
-    return `<div class="step ${cls}"><b>${s.n}${loop}</b><span>${esc(d)}</span></div>`;
+    const skip = t && t.mode === 'quick' && s.k === 'plan';
+    const cls = [s.c, i === now ? 'now' : '', i <= doneUpTo ? 'done' : '', i === stuck ? 'stuck' : '', skip ? 'skip' : ''].join(' ');
+    const loop = s.k === 'code' ? ` <span class="faint" title="code ⇄ verify ⇄ fix up to ${cfg.limits.fixIterations}×, review fix ${cfg.limits.reviewRounds}×">↺</span>` : '';
+    const num = i <= doneUpTo ? '✓' : i === stuck ? '!' : i + 1;
+    const took = i === now && t?.status === 'running' && t.stageAt ? ` <span class="faint" style="font-weight:500">· ${dur(t.stageAt)}</span>` : '';
+    return `<div class="step ${cls}"><span class="num">${num}</span><div><b>${s.n}${loop}${took}</b><span class="d"><i class="eng"></i>${esc(skip ? 'skipped (quick)' : s.d)}</span></div></div>`;
   }).join('')}</div>`;
 }
+const legend = '<div class="legend"><span><i style="background:var(--violet)"></i>Claude</span><span><i style="background:var(--info)"></i>OpenCode</span><span><i style="background:var(--faint)"></i>no tokens</span><span><i style="background:var(--warn)"></i>you</span></div>';
 
 // ---------------- board ----------------
 const COLS = [
-  ['Queued', ['backlog', 'ready']], ['Running', ['running']], ['Needs you', ['needs_info', 'review', 'failed']],
-  ['Shipping', ['approved', 'pr_open']], ['Closed', ['done', 'rejected']],
+  ['Queued', ['backlog', 'ready'], 'neutral'], ['Running', ['running'], 'accent'], ['Needs you', ['needs_info', 'review', 'failed'], 'warn'],
+  ['Shipping', ['approved', 'pr_open'], 'ok'], ['Closed', ['done', 'rejected'], 'neutral'],
 ];
 function viewBoard() {
   const repo = page.repo || '';
-  const ts = S.tickets.filter((t) => !repo || t.repo === repo);
+  const kind = page.kind || '';
+  const ts = S.tickets.filter((t) => (!repo || t.repo === repo) && (!kind || t.kind === kind));
   const repos = S.repos.map((r) => `<option ${r.name === repo ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
+  const openBugs = S.tickets.filter((t) => t.kind === 'bug' && !['done', 'rejected'].includes(t.status) && (!repo || t.repo === repo)).length;
+  const n = (sts) => ts.filter((t) => sts.includes(t.status)).length;
+  const openPrs = P ? P.prs.filter((p) => p.state === 'OPEN' && (!repo || p.repo === repo)).length : '—';
+  const spend = ts.reduce((s, t) => s + t.cost, 0);
+  let how = true;
+  try { how = localStorage.getItem('kit-how') !== '0'; } catch { /* storage blocked */ }
   $('#view').innerHTML = `
-    <div class="row" style="margin-bottom:10px"><h2>How a ticket runs</h2><span class="muted small">— purple = Claude, blue = OpenCode, grey = no tokens, amber = you</span></div>
-    ${flow(S.config)}
-    <div class="row" style="margin-bottom:12px">
-      <select id="repoF" style="width:auto"><option value="">All repos</option>${repos}</select>
-      <span class="muted small">${S.tickets.length} tickets · Claude spend ≈ $${S.tickets.reduce((n, t) => n + t.cost, 0).toFixed(3)}</span>
-      <span class="grow"></span><button id="notifyBtn" class="primary" style="display:none" onclick="notify([...page.sel])"></button>
+    <div class="pagehead"><div><h2>Board</h2><p class="small muted">Tickets move left to right. You step in at <b>Needs you</b>.</p></div><span class="grow"></span>
+      <div class="toolbar" style="margin:0"><div class="seg">${[['', 'All'], ['feature', 'Features'], ['bug', `Bugs${openBugs ? ` <span class="faint">${openBugs} open</span>` : ''}`]].map(([k, l]) => `<button class="${k === kind ? 'on' : ''}" onclick="page.kind='${k}';render()">${l}</button>`).join('')}</div>
+        <select id="repoF"><option value="">All repos</option>${repos}</select><button class="small" onclick="planTickets()">${ic('list')}Plan tickets…</button>
+        <button id="notifyBtn" class="primary small" style="display:none" onclick="notify([...page.sel])"></button></div></div>
+    <div class="stats">
+      <div class="stat"><span>${ic('activity')}Running</span><b>${n(['running'])}</b></div>
+      <div class="stat"><span>${ic('inbox')}Needs you</span><b style="${n(['needs_info', 'review', 'failed']) ? 'color:var(--warn)' : ''}">${n(['needs_info', 'review', 'failed'])}</b></div>
+      <a class="stat" href="#/prs"><span>${ic('pr')}Open pull requests</span><b>${openPrs}</b></a>
+      <div class="stat"><span>${ic('dollar')}Claude spend</span><b>$${spend.toFixed(spend < 10 ? 3 : 2)}</b><span class="faint" style="margin-top:2px">🪙 ${kTok(ts.reduce((n, t) => n + (t.tokens?.in || 0) + (t.tokens?.out || 0), 0))} tokens</span></div>
     </div>
-    <div class="cols">${COLS.map(([name, sts]) => {
-      let list = ts.filter((t) => sts.includes(t.status));
-      if (name === 'Closed') list = list.slice(-12);
-      return `<div class="col"><h4><span>${name}</span><span>${list.length}</span></h4>${list.slice().reverse().map(cardHtml).join('') || '<div class="muted small">—</div>'}</div>`;
-    }).join('')}</div>`;
+    <details class="how" ${how ? 'open' : ''}><summary>How a ticket runs</summary>${flow(S.config)}<div style="margin-top:10px">${legend}</div></details>
+    ${!S.tickets.length ? `<div class="panel hero"><div class="logo">${ic('spark')}</div><h2>No tickets yet</h2>
+        <p>Describe a change and the hub plans, codes, verifies and reviews it on its own branch, then waits for your approval before opening a PR.</p>
+        <div class="row" style="justify-content:center"><button class="primary" onclick="newTicket()">Create your first ticket</button><button onclick="planTickets()">${ic('list')}Plan tickets from a goal or plan file</button></div><div class="small faint" style="margin-top:12px">or run <code>/ticket &lt;what to do&gt;</code> inside a repo · press <kbd>N</kbd> anytime</div></div>`
+      : `<div class="cols">${COLS.map(([name, sts, tone]) => {
+        let list = ts.filter((t) => sts.includes(t.status));
+        if (name === 'Closed') list = list.slice(-12);
+        return `<div class="col"><h4 class="t-${tone}"><i></i>${name}<span class="count">${list.length}</span></h4>${list.slice().sort(byIndex).map(cardHtml).join('') || '<div class="empty">Nothing here</div>'}</div>`;
+      }).join('')}</div>`}`;
   $('#repoF').onchange = (e) => { page.repo = e.target.value; render(); };
+  $('details.how').ontoggle = (e) => { try { localStorage.setItem('kit-how', e.target.open ? '1' : '0'); } catch { /* storage blocked */ } };
   document.querySelectorAll('.nsel input').forEach((c) => { c.onchange = () => { c.checked ? page.sel.add(c.dataset.id) : page.sel.delete(c.dataset.id); selCount(); }; });
   selCount();
 }
@@ -242,13 +513,65 @@ function selCount() {
   if (b) { b.style.display = page.sel.size ? '' : 'none'; b.textContent = `📣 ${notifyLabel()} (${page.sel.size})`; }
 }
 function cardHtml(t) {
+  const num = prNum(t.pr);
   const pick = t.status === 'pr_open' && repoFlags(t.repo).notify
-    ? `<label class="nsel" title="Select for ${esc(notifyLabel())}"><input type="checkbox" data-id="${t.id}" ${page.sel.has(t.id) ? 'checked' : ''}></label>` : '';
-  return `<div class="cardw">${pick}<a class="card" href="#/ticket/${t.id}">
-    <div class="row small"><b>${esc(t.key || t.id)}</b>${t.key ? `<span class="muted">${t.id}</span>` : ''}<span class="muted">${esc(t.repo)}</span>${t.notifiedAt ? '<span class="badge">📣</span>' : ''}${t.mode === 'quick' ? '<span class="badge">⚡ quick</span>' : ''}<span class="grow"></span><span class="s-${t.status}">${ICON[t.status]} ${t.status.replace('_', ' ')}${t.stage ? ` · ${t.stage}` : ''}</span></div>
+    ? `<label class="nsel" title="Select for ${esc(notifyLabel())}" onclick="event.stopPropagation()"><input type="checkbox" data-id="${t.id}" ${page.sel.has(t.id) ? 'checked' : ''}></label>` : '';
+  return `<div class="card" tabindex="0" onclick="location.hash='#/ticket/${t.id}'" onkeydown="if(event.key==='Enter')this.click()">${pick}
+    <div class="top">${t.key ? `<span class="id" style="color:var(--text)">${esc(t.key)}</span><span>·</span>` : ''}<span class="id">${t.id}</span><span>·</span><span>${esc(t.repo)}</span><span class="grow"></span>${t.notifiedAt ? `<span class="chip" title="${esc(notifyLabel())} ${ago(t.notifiedAt)}">📣</span>` : ''}${sevChip(t)}${t.kind === 'bug' && t.status === 'done' ? `<span class="chip sev t-${t.verifiedAt ? 'ok' : 'warn'}">${ic('check')}${t.verifiedAt ? 'verified' : 'verify'}</span>` : ''}${t.mode === 'quick' ? `<span class="chip" title="quick mode">${ic('bolt')}quick</span>` : ''}${t.status === 'backlog' && t.planned ? `<span class="chip t-accent" style="color:var(--tone)">${ic('pen')}plan ready</span>` : ''}${t.planOnly && ['ready', 'running'].includes(t.status) ? `<span class="chip">${ic('pen')}plan only</span>` : ''}</div>
     <div class="t">${esc(t.title)}</div>
-    ${t.error && t.status === 'failed' ? `<div class="small" style="color:var(--bad)">${esc(t.error)}</div>` : ''}
-    <div class="small muted">${ago(t.updatedAt)}${t.iterations ? ` · ${t.iterations} iter` : ''}${t.cost ? ` · $${t.cost}` : ''}</div></a></div>`;
+    ${['ready', 'backlog'].includes(t.status) && t.waiting ? `<div class="small" style="color:var(--muted);margin:-2px 0 8px">⏳ ${esc(t.waiting)}</div>` : ''}
+    ${t.error && t.status === 'failed' ? `<div class="errline">${esc(t.error)}</div>` : ''}
+    <div class="meta">${pill(t.status, t.status === 'running' && t.stageAt ? `${t.stage} · ${dur(t.stageAt)}` : t.stage)}${t.pr ? `<a class="chip" href="${esc(t.pr)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="${esc(t.pr)}${t.autoMerge === 'pending' ? ' · auto-merge on' : t.autoMerge === 'failed' ? ' · auto-merge blocked' : ''}">${ic(t.autoMerge === 'merged' ? 'merged' : 'pr')}#${num || 'PR'}</a>` : ''}
+      <span class="grow"></span><span>${ago(t.updatedAt)}${t.iterations ? ` · ${t.iterations} iter` : ''}${t.cost ? ` · $${t.cost}` : ''}${t.tokens?.in || t.tokens?.out ? ` · 🪙 ${kTok(t.tokens.in + t.tokens.out)}` : ''}</span></div></div>`;
+}
+
+// ---------------- pull requests ----------------
+const PR_STATE = { OPEN: ['Open', 'ok', 'pr'], DRAFT: ['Draft', 'neutral', 'pr'], MERGED: ['Merged', 'violet', 'merged'], CLOSED: ['Closed', 'bad', 'prclosed'] };
+const REVIEW = { APPROVED: ['Approved', 'ok'], CHANGES_REQUESTED: ['Changes requested', 'bad'], REVIEW_REQUIRED: ['Review required', 'warn'] };
+async function loadPrs(fresh) {
+  P = await api('GET', `prs${fresh ? '?fresh=1' : ''}`);
+  const open = P.prs.filter((p) => p.state === 'OPEN').length;
+  const c = $('#prCount'); c.hidden = !open; c.textContent = open; c.classList.toggle('hot', open > 0);
+  return P;
+}
+async function viewPrs() {
+  const draw = () => {
+    if (page.v !== 'prs') return;
+    const repo = page.repo || '';
+    const repos = S.repos.map((r) => `<option ${r.name === repo ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
+    const all = (P?.prs || []).filter((p) => !repo || p.repo === repo);
+    const st = page.prState || (!P || all.some((p) => p.state === 'OPEN') ? 'OPEN' : 'ALL');
+    const cnt = (s) => all.filter((p) => s === 'ALL' || p.state === s).length;
+    const list = all.filter((p) => st === 'ALL' || p.state === st);
+    const errs = (P?.errors || []).filter((e) => !repo || e.repo === repo);
+    $('#view').innerHTML = `
+      <div class="pagehead"><div><h2>Pull requests</h2><p class="small muted">Every PR in your hub repos on GitHub — opened by the hub or by you.</p></div></div>
+      <div class="toolbar">
+        <div class="seg">${['OPEN', 'MERGED', 'CLOSED', 'ALL'].map((s) => `<button class="${s === st ? 'on' : ''}" onclick="page.prState='${s}';viewPrs()">${s[0] + s.slice(1).toLowerCase()} <span class="faint">${P ? cnt(s) : ''}</span></button>`).join('')}</div>
+        <select id="prRepo"><option value="">All repos</option>${repos}</select><span class="grow"></span>
+        <button class="small" id="prRefresh">${ic('refresh')}Refresh</button>
+      </div>
+      ${errs.map((e) => `<div class="warnbar">${ic('x')}<div><b>${esc(e.repo)}</b>: ${esc(e.error)}${/remote/i.test(e.error) ? ' — push it to GitHub to see its PRs here.' : /auth|login/i.test(e.error) ? ' — run <code>gh auth login</code>.' : ''}</div></div>`).join('')}
+      ${!P ? '<div class="panel muted">Loading pull requests from GitHub…</div>'
+        : list.length ? `<div class="panel prs">${list.map(prHtml).join('')}</div>`
+        : `<div class="panel hero"><div class="logo">${ic('pr')}</div><h2>No ${st === 'ALL' ? '' : st.toLowerCase() + ' '}pull requests</h2><p>Approve a ticket in <b>Ready for review</b> and the hub pushes its branch and opens a PR here.</p></div>`}`;
+    $('#prRepo').onchange = (e) => { page.repo = e.target.value; draw(); };
+    $('#prRefresh').onclick = guard(async () => { $('#prRefresh').disabled = true; await loadPrs(true); draw(); toast('pull requests refreshed'); });
+  };
+  draw();
+  if (!P) { await loadPrs(); draw(); }
+}
+function prHtml(p) {
+  const [label, tone, icon] = PR_STATE[p.isDraft && p.state === 'OPEN' ? 'DRAFT' : p.state] || [p.state, 'neutral', 'pr'];
+  const rv = p.state === 'OPEN' && REVIEW[p.reviewDecision];
+  return `<div class="pr"><span class="t-${tone}" style="color:var(--tone)">${ic(icon)}</span>
+    <div style="min-width:0"><a class="title" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.title)}</a>
+      <div class="sub"><span class="mono">#${p.number}</span><span class="chip">${ic('folder')}${esc(p.repo)}</span>
+        <span>${ic('branch')} <span class="mono">${esc(p.headRefName)}</span> → <span class="mono">${esc(p.baseRefName)}</span></span>
+        ${p.author ? `<span>by ${esc(p.author)}</span>` : ''}<span>updated ${ago(p.updatedAt)}</span></div></div>
+    <div class="side"><div class="row">${rv ? `<span class="pill t-${rv[1]}"><i></i>${rv[0]}</span>` : ''}<span class="pill t-${tone}">${ic(icon)}${label}</span></div>
+      <div class="row">${p.ticket ? `<a class="chip" href="#/ticket/${p.ticket.id}" title="hub ticket">${p.ticket.id}</a>` : ''}<span class="diffstat"><span class="a">+${p.additions ?? 0}</span> <span class="r">−${p.deletions ?? 0}</span></span>
+      <a class="btn small" href="${esc(p.url)}" target="_blank" rel="noopener">${ic('ext')}GitHub</a></div></div></div>`;
 }
 
 // ---------------- ticket ----------------
@@ -259,37 +582,93 @@ async function viewTicket(id, keepTab) {
   drawTicket();
 }
 function actionsFor(t) {
-  const b = (act, label, cls = '') => `<button class="${cls}" onclick="act('${act}')">${label}</button>`;
+  const b = (act, label, cls = '', icon = '') => `<button class="${cls}" onclick="act('${act}')">${icon ? ic(icon) : ''}${label}</button>`;
+  const changes = `<button onclick="page.tab='changes';drawTicket()">${ic('redo')}Request changes</button>`;
   return {
-    backlog: [b('run', '▶ Run', 'primary'), b('reject', 'Reject', 'danger')],
-    ready: [b('stop', '⏹ Back to backlog')],
-    running: [b('stop', t.cancel ? 'cancelling…' : '⏹ Stop', 'danger')],
-    needs_info: [b('reject', 'Reject', 'danger')],
-    review: [b('approve', '✅ Approve → push + PR', 'primary'), `<button onclick="page.tab='changes';drawTicket()">🔁 Request changes</button>`, b('replan', 'Re-plan'), b('reject', 'Reject', 'danger')],
-    failed: [b('run', '🔁 Retry', 'primary'), b('replan', 'Re-plan'), b('reject', 'Reject', 'danger')],
-    pr_open: [t.pr ? `<a href="${esc(t.pr)}" target="_blank"><button class="primary">🔗 Open PR</button></a>` : '',
+    backlog: t.files.brief
+      ? [b('run', 'Run — code this plan', 'primary', 'play'), b('plan', 'Re-plan only', '', 'pen'), b('reject', 'Reject', 'danger', 'x')]
+      : [b('run', 'Run', 'primary', 'play'), b('plan', 'Generate plan only', '', 'pen'), b('reject', 'Reject', 'danger', 'x')],
+    ready: [b('stop', 'Back to backlog', '', 'stop')],
+    running: [b('stop', t.cancel ? 'Cancelling…' : 'Stop', 'danger', 'stop')],
+    needs_info: [b('reject', 'Reject', 'danger', 'x')],
+    review: [b('approve', 'Approve → push + PR', 'primary', 'check'), changes, b('replan', 'Re-plan', '', 'redo'), b('reject', 'Reject', 'danger', 'x')],
+    failed: [b('run', 'Retry', 'primary', 'redo'), b('replan', 'Re-plan + run'), b('plan', 'Plan only', '', 'pen'), b('reject', 'Reject', 'danger', 'x')],
+    rejected: [b('reopen', 'Reopen → backlog', 'primary', 'redo')],
+    pr_open: [t.pr ? `<a class="btn primary" href="${esc(t.pr)}" target="_blank" rel="noopener">${ic('ext')}Open PR</a>` : '',
       repoFlags(t.repo).notify ? `<button class="primary" onclick="notify([T.id])">📣 ${esc(notifyLabel())}${t.notifiedAt ? ' again' : ''}</button>` : '',
-      `<button onclick="page.tab='changes';drawTicket()">🔁 Changes</button>`, b('done', '✔ Done')],
+      changes, b('done', 'Mark done', '', 'check')],
+    done: t.kind === 'bug' && !t.verifiedAt ? [b('verify', 'Verified — it works', 'primary', 'check'), `<button class="danger" onclick="stillBroken()">${ic('bug')}Still broken…</button>`] : [],
   }[t.status] || [];
+}
+// Sibling tickets of the open one (same repo), grouped like the board; Closed starts folded.
+const SIDE_GROUPS = [['Needs you', ['needs_info', 'review', 'failed']], ['Running', ['running', 'ready']], ['Backlog', ['backlog']], ['Shipping', ['approved', 'pr_open']], ['Closed', ['done', 'rejected']]];
+const siblings = (t) => S.tickets.filter((x) => x.repo === t.repo).sort(byIndex);
+function sideList(t) {
+  const q = (page.tq || '').trim().toLowerCase();
+  const ts = siblings(t).filter((x) => !q || `${x.id} ${x.title}`.toLowerCase().includes(q));
+  let closedOpen = false;
+  try { closedOpen = localStorage.getItem('kit-side-closed') === '1'; } catch { /* storage blocked */ }
+  const groups = SIDE_GROUPS.map(([name, sts]) => {
+    const list = ts.filter((x) => sts.includes(x.status));
+    if (!list.length) return '';
+    const open = name !== 'Closed' || closedOpen || !!q || list.some((x) => x.id === t.id);
+    return `<details class="tgrp" data-g="${name}" ${open ? 'open' : ''}><summary>${name}<span class="count">${list.length}</span></summary>${list.map((x) => {
+      const [label, tone] = ST[x.status] || [x.status, 'neutral'];
+      return `<a class="titem t-${tone}${x.id === t.id ? ' on' : ''}${x.status === 'running' ? ' live' : ''}" href="#/ticket/${x.id}" title="${esc(`${x.id} · ${label}\n${x.title}`)}"><i></i><span class="id">${x.id}</span><span class="tt">${esc(x.title)}</span></a>`;
+    }).join('')}</details>`;
+  }).join('');
+  return groups || '<div class="empty" style="margin:8px 4px">No match</div>';
+}
+function drawSide(t) {
+  $('#tsl').innerHTML = sideList(t);
+  $('#tsl').querySelectorAll('details[data-g="Closed"]').forEach((d) => { d.ontoggle = () => { try { localStorage.setItem('kit-side-closed', d.open ? '1' : '0'); } catch { /* storage blocked */ } }; });
+}
+// Previous / next ticket in id order within the repo, so a T10…T19 series reads straight through.
+function neighbours(t) {
+  const ts = siblings(t), i = ts.findIndex((x) => x.id === t.id);
+  return i < 0 ? [null, null] : [ts[i - 1] || null, ts[i + 1] || null];
+}
+function gotoNeighbour(dir) {
+  if (page.v !== 'ticket' || !T) return;
+  const n = neighbours(T)[dir < 0 ? 0 : 1];
+  if (n) location.hash = `#/ticket/${n.id}`;
 }
 function drawTicket() {
   const t = T;
+  const sideScroll = $('#tsl')?.scrollTop;
+  const [prev, next] = neighbours(t);
+  const nav = (x, dir) => `<a class="btn small ghost${x ? '' : ' off'}" href="${x ? `#/ticket/${x.id}` : 'javascript:void 0'}" title="${x ? esc(`${x.id} · ${x.title}`) : ''} (${dir < 0 ? '[' : ']'})">${dir < 0 ? `${ic('back')}${x ? x.id : 'Prev'}` : `${x ? x.id : 'Next'}<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>`}</a>`;
   const tabs = [['plan', 'Plan'], ...(t.status === 'needs_info' || t.files.questions ? [['questions', 'Questions']] : []), ['result', 'Result'], ['diff', `Diff${t.diffChars ? '' : ' (none)'}`],
     ...(t.files.test ? [['tests', 'Tests']] : []), ...(t.evidence.length ? [['evidence', `Evidence (${t.evidence.length})`]] : []),
     ...(t.files.comment || t.files.prBody ? [['publish', 'Published']] : []),
     ['logs', `Logs (${t.logs.length})`], ['ticket', 'Ticket'], ['history', 'History'],
     ...(['review', 'pr_open'].includes(t.status) ? [['changes', 'Request changes']] : [])];
   if (!tabs.some(([k]) => k === page.tab)) page.tab = 'plan';
-  $('#view').innerHTML = `
-    <div class="row"><a href="#/board">← Board</a></div>
-    <div class="row" style="margin:10px 0 4px"><h2>${t.key ? `${t.url ? `<a href="${esc(t.url)}" target="_blank">${esc(t.key)}</a>` : esc(t.key)} · ` : ''}${t.id} · ${esc(t.title)}</h2>${t.notifiedAt ? `<span class="badge">📣 ${esc(notifyLabel())} ${ago(t.notifiedAt)}</span>` : ''}<span class="badge s-${t.status}">${ICON[t.status]} ${t.status.replace('_', ' ')}${t.stage ? ` · ${t.stage}` : ''}</span>${t.mode === 'quick' ? '<span class="badge">⚡ quick</span>' : ''}</div>
-    <div class="small muted" style="margin-bottom:12px">${esc(t.repo)} · branch <code>${esc(t.branch)}</code> · iterations ${t.iterations} · Claude ≈ $${t.cost.claudeUsd}${t.pr ? ` · <a href="${esc(t.pr)}" target="_blank">${esc(t.pr)}</a>` : ''}</div>
+  $('#view').innerHTML = `<div class="tlayout">
+    <aside class="panel tside"><div class="sh"><b>${ic('folder')}${esc(t.repo)}<span class="count">${siblings(t).length}</span></b>
+      <input id="tq" type="search" placeholder="Filter tickets…" value="${esc(page.tq || '')}" autocomplete="off"></div>
+      <div class="sl" id="tsl"></div></aside>
+    <div>
+    <div class="tnav"><a class="back" href="#/board">${ic('back')}Board</a><span class="grow"></span>${nav(prev, -1)}${nav(next, 1)}</div>
+    <div class="thead">
+      <h2>${t.key ? `<span class="id">${t.url ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.key)}</a>` : esc(t.key)}</span>` : ''}<span class="id">${t.id}</span>${esc(t.title)}</h2>
+      <div class="row" style="margin-top:10px">${pill(t.status, t.stage)}${t.notifiedAt ? `<span class="chip">📣 ${esc(notifyLabel())} ${ago(t.notifiedAt)}</span>` : ''}${bugPill(t)}${sevChip(t)}${t.attachments?.length ? `<a class="chip" href="javascript:void 0" onclick="page.tab='ticket';drawTicket()">${ic('image')}${t.attachments.length} screenshot${t.attachments.length > 1 ? 's' : ''}</a>` : ''}${t.status === 'ready' ? `<span class="small muted">⏳ ${esc((S.tickets.find((x) => x.id === t.id) || {}).waiting || 'starting…')}</span>` : ''}${t.mode === 'quick' ? `<span class="chip">${ic('bolt')}quick</span>` : ''}</div>
+      <div class="metas"><span>${ic('folder')}<b>${esc(t.repo)}</b></span><span>${ic('branch')}<code>${esc(t.branch)}</code></span>
+        <span>${ic('redo')}<b>${t.iterations}</b> iterations</span><span>${ic('dollar')}Claude ≈ <b>$${t.cost.claudeUsd}</b></span>${(() => { const k = tokSum(t.tokens); return k.in + k.out ? `<span title="${esc(Object.entries(t.tokens).map(([st, v]) => `${st}: ${kTok(v.in)} in / ${kTok(v.out)} out`).join(' · '))}">🪙 <b>${kTok(k.in + k.out)}</b> tokens <span class="faint">(${kTok(k.in)} in · ${kTok(k.out)} out)</span></span>` : ''; })()}</div>
+    </div>
+    ${t.pr ? `<div class="prbanner">${ic('pr')}<div><b>Pull request #${prNum(t.pr) || ''} is open</b><div><a class="url" href="${esc(t.pr)}" target="_blank" rel="noopener">${esc(t.pr)}</a></div></div><span class="grow"></span><a class="btn small" href="${esc(t.pr)}" target="_blank" rel="noopener">${ic('ext')}View on GitHub</a></div>` : ''}
     ${flow(S.config, t)}
-    <div class="row">${actionsFor(t).join('')}</div>
-    ${t.worktree ? `<div class="small" style="margin-top:10px">🧪 Test locally: <code id="wt">${esc(t.worktree)}</code> <button class="small" onclick="navigator.clipboard.writeText($('#wt').textContent);toast('copied')">copy</button></div>` : ''}
-    ${t.error ? `<div class="box err" style="margin-top:10px"><pre>${esc(t.error)}</pre></div>` : ''}
+    <div class="actions">${actionsFor(t).join('')}</div>
+    ${t.worktree ? `<div class="hint">🧪 <span class="muted">Test locally:</span> <code id="wt">${esc(t.worktree)}</code> <button class="small ghost" onclick="navigator.clipboard.writeText($('#wt').textContent);toast('Path copied')">${ic('copy')}Copy</button></div>` : ''}
+    ${t.error && !['needs_info', 'rejected', 'done'].includes(t.status) ? `<div class="box err" style="margin-top:12px"><pre>${esc(t.error)}</pre></div>` : ''}
     <div class="tabs">${tabs.map(([k, n]) => `<button class="${k === page.tab ? 'on' : ''}" onclick="page.tab='${k}';drawTicket()">${n}</button>`).join('')}</div>
-    <div id="tab"></div>`;
+    <div id="tab"></div>
+    </div></div>`;
+  drawSide(t);
+  if (sideScroll != null) $('#tsl').scrollTop = sideScroll;
+  $('#tsl .titem.on')?.scrollIntoView({ block: 'nearest' });
+  $('#tq').oninput = (e) => { page.tq = e.target.value; drawSide(t); };
+  $('#tq').onkeydown = (e) => { if (e.key === 'Escape') { page.tq = ''; e.target.value = ''; drawSide(t); e.target.blur(); } };
   drawTab();
 }
 function drawTab() {
@@ -299,29 +678,37 @@ function drawTab() {
     el.innerHTML = t.files.brief
       ? `<p class="small muted">${t.mode === 'quick' ? 'Quick mode: the ticket text is the brief (no Claude plan).' : `Written by ${esc(S.config.engines.plan.tool)} · ${esc(S.config.engines.plan.model)}.`} This brief is all the coder sees. ${editable ? 'Edit it, then Run / Retry / Request changes to code against your version.' : ''}</p>
          <textarea id="brief" rows="26" ${editable ? '' : 'readonly'}>${esc(t.files.brief)}</textarea>
-         ${editable ? '<div class="row" style="margin-top:8px"><button class="primary" onclick="saveBrief()">Save plan</button><span class="muted small">Ctrl+S</span></div>' : ''}`
-      : `<p class="muted">No plan yet. ${t.status === 'ready' || t.status === 'running' ? 'It is written when the ticket reaches the Plan step.' : ''}</p>`;
+         ${editable ? '<div class="row" style="margin-top:10px"><button class="primary" onclick="saveBrief()">Save plan</button><span class="faint small"><kbd>Ctrl</kbd> + <kbd>S</kbd></span></div>' : ''}`
+      : `<div class="empty">No plan yet. ${t.status === 'ready' || t.status === 'running' ? `It is written when the ticket reaches the Plan step${t.planOnly ? ', then the ticket waits in the backlog for you' : ''}.`
+        : ['backlog', 'failed'].includes(t.status) ? `<div style="margin-top:10px"><button class="primary" onclick="act('plan')">${ic('pen')}Generate plan only</button></div><div class="small" style="margin-top:8px">Claude reads the repo and writes the brief. Nothing is coded until you press Run.</div>` : ''}</div>`;
     if (editable && $('#brief')) $('#brief').onkeydown = (e) => { if (e.ctrlKey && e.key === 's') { e.preventDefault(); saveBrief(); } };
+  } else if (page.tab === 'questions' && t.questionsData) {
+    el.innerHTML = `<p class="small muted" style="margin-top:0">Claude needs a few decisions before it can plan. Its suggestion is pre-selected — change any you disagree with.</p>
+      ${t.questionsData.map((x, i) => `<div class="qcard"><div class="qq"><span class="qn">${i + 1}</span><div>${esc(x.q)}</div></div><div class="opts">
+        ${x.options.map((o, k) => `<label class="opt"><input type="radio" name="q${i}" value="${k}" ${k === (t.picks?.[i] ?? x.default) ? 'checked' : ''}><span>${esc(o)}${k === x.default ? ' <span class="pill t-accent"><i></i>suggested</span>' : ''}</span></label>`).join('')}
+        <label class="opt"><input type="radio" name="q${i}" value="other"><span style="flex:1">Other answer<input class="qother" data-i="${i}" placeholder="Type your own answer" onfocus="this.closest('label').querySelector('input').checked=true"></span></label>
+      </div></div>`).join('')}
+      <label>Anything else Claude should know? <span class="faint" style="font-weight:400">(optional)</span></label><textarea id="ans" rows="3" style="font-family:var(--sans);font-size:13px"></textarea>
+      <div class="row" style="margin-top:12px"><button class="primary" onclick="sendPicks()">${ic('check')}Send answers → re-plan</button><button onclick="sendPicks(true)">Accept all suggestions</button></div>
+      ${(t.answers || []).length ? `<h3>Previous answers</h3>${t.answers.map((a) => `<div class="box" style="margin-bottom:8px"><pre>${esc(a)}</pre></div>`).join('')}` : ''}`;
   } else if (page.tab === 'questions') {
     el.innerHTML = `<div class="box"><pre>${esc(t.files.questions || '(none)')}</pre></div>
-      ${t.status === 'needs_info' ? `<label>Your answers</label><textarea id="ans" rows="6"></textarea><div class="row" style="margin-top:8px"><button class="primary" onclick="act('answer', $('#ans').value)">Send answers → re-plan</button></div>` : ''}
-      ${(t.answers || []).length ? `<h3>Previous answers</h3>${t.answers.map((a) => `<div class="box" style="margin-bottom:6px"><pre>${esc(a)}</pre></div>`).join('')}` : ''}`;
+      ${t.status === 'needs_info' ? `<label>Your answers</label><textarea id="ans" rows="6"></textarea><div class="row" style="margin-top:10px"><button class="primary" onclick="act('answer', $('#ans').value)">Send answers → re-plan</button></div>` : ''}
+      ${(t.answers || []).length ? `<h3>Previous answers</h3>${t.answers.map((a) => `<div class="box" style="margin-bottom:8px"><pre>${esc(a)}</pre></div>`).join('')}` : ''}`;
   } else if (page.tab === 'result') {
     const summary = t.files.summary.replace(/^## .*\n+/, '').replace(/\n### Review[\s\S]*$/, '').trim();
-    el.innerHTML = `${summary ? `<h3>Summary</h3><div class="box"><pre>${esc(summary)}</pre></div>` : '<p class="muted">No result yet.</p>'}
+    const part = (h) => ((t.files.notes || '').match(new RegExp(`## ${h}\\n([\\s\\S]*?)(?=\\n## |$)`)) || [])[1]?.trim() || '';
+    const plain = part('For everyone'), tech = part('For engineers');
+    el.innerHTML = `${plain || tech ? `<div class="grid2" style="gap:14px;margin-bottom:6px">
+        <div class="box" style="background:color-mix(in srgb,var(--accent) 6%,var(--panel))"><h3 style="margin-top:0">📋 For everyone</h3><div style="white-space:pre-wrap">${esc(plain)}</div></div>
+        <div class="box"><h3 style="margin-top:0">🛠 For engineers</h3><div style="white-space:pre-wrap;font-size:13px">${esc(tech)}</div></div></div>
+        <p class="small faint">This report is what Telegram and the PR description show.</p>` : ''}
+      ${summary ? `<h3 style="margin-top:${plain ? 18 : 0}px">Checks &amp; changes</h3><div class="box"><pre>${esc(summary)}</pre></div>` : '<div class="empty">No result yet.</div>'}
       ${t.files.review ? `<h3>Review (Claude)</h3><div class="box"><pre>${esc(t.files.review)}</pre></div>` : ''}
       ${t.files.worker ? `<h3>Coder report (last lines)</h3><div class="box"><pre>${esc(t.files.worker)}</pre></div>` : ''}`;
   } else if (page.tab === 'diff') {
-    el.innerHTML = '<p class="muted">loading…</p>';
-    api('GET', `tickets/${t.id}/diff`).then(({ text }) => { el.innerHTML = text ? renderDiff(text) : '<p class="muted">No diff yet (written after the local commit).</p>'; });
-  } else if (page.tab === 'logs') {
-    const sel = page.log && t.logs.some((l) => l.name === page.log) ? page.log : (t.logs.at(-1) || {}).name;
-    page.log = sel;
-    el.innerHTML = t.logs.length ? `<div class="row" style="margin-bottom:8px">${t.logs.map((l) => `<button class="small ${l.name === sel ? 'primary' : ''}" onclick="page.log=${js(l.name)};drawTab()">${l.name}</button>`).join('')}</div><div class="logbox"><pre id="logtext">loading…</pre></div>` : '<p class="muted">No logs yet.</p>';
-    if (sel) loadLog(sel);
-  } else if (page.tab === 'ticket') {
-    el.innerHTML = `<div class="box"><b>${esc(t.title)}</b><pre style="margin-top:6px">${esc(t.description || '(no description)')}</pre></div>
-      ${t.feedback.length ? `<h3>Change requests</h3>${t.feedback.map((f, i) => `<div class="box" style="margin-bottom:6px"><span class="muted small">round ${i + 2}</span><pre>${esc(f)}</pre></div>`).join('')}` : ''}`;
+    el.innerHTML = '<p class="muted">Loading…</p>';
+    api('GET', `tickets/${t.id}/diff`).then(({ text }) => { el.innerHTML = text ? renderDiff(text) : '<div class="empty">No diff yet (written after the local commit).</div>'; });
   } else if (page.tab === 'tests') {
     el.innerHTML = `<p class="small muted">Written by the test stage${S.config.engines.test.agent ? ` (${esc(S.config.engines.test.agent)})` : ''}; the first line is the verdict.</p><div class="box"><pre>${esc(t.files.test)}</pre></div>`;
   } else if (page.tab === 'evidence') {
@@ -334,18 +721,41 @@ function drawTab() {
     el.innerHTML = `<div class="row small" style="margin-bottom:8px">${t.pr ? `PR: <a href="${esc(t.pr)}" target="_blank">${esc(t.pr)}</a>` : ''}${t.comment ? ` · comment: <a href="${esc(t.comment)}" target="_blank">${esc(t.comment)}</a>` : ''}</div>
       ${t.files.comment ? `<h3>Ticket comment</h3><div class="box"><pre>${esc(t.files.comment)}</pre></div>` : ''}
       ${t.files.prBody ? `<h3>PR description</h3><div class="box"><pre>${esc(t.files.prBody)}</pre></div>` : ''}`;
+  } else if (page.tab === 'logs') {
+    // Follow the newest log while you're on it; stay put if you picked an older one.
+    const latest = (t.logs.at(-1) || {}).name;
+    const sel = page.log && page.log !== page.logLatest && t.logs.some((l) => l.name === page.log) ? page.log : latest;
+    page.log = sel; page.logLatest = latest;
+    el.innerHTML = t.logs.length ? `<div class="row" style="margin-bottom:10px"><div class="seg" style="flex-wrap:wrap">${t.logs.map((l) => `<button class="${l.name === sel ? 'on' : ''}" onclick="page.log=${js(l.name)};drawTab()">${l.name}</button>`).join('')}</div>
+        <span class="grow"></span><span id="logmeta" class="small muted"></span></div><div class="logbox"><pre id="logtext">loading…</pre></div>` : '<div class="empty">No logs yet.</div>';
+    if (sel) loadLog(sel);
+  } else if (page.tab === 'ticket') {
+    const canAdd = !['running', 'approved', 'done', 'rejected'].includes(t.status);
+    el.innerHTML = `<div class="box"><b>${esc(t.title)}</b><pre style="margin-top:8px">${esc(t.description || '(no description)')}</pre></div>
+      ${t.attachments.length || canAdd ? `<div class="row" style="margin-top:18px"><h3 style="margin:0">Screenshots</h3><span class="faint small">only the planner sees these (≈${kTok(t.attachments.length * 1800)} tokens); the coder gets its written description</span><span class="grow"></span>
+        ${canAdd ? `<button class="small" onclick="addShots()">${ic('plus')}Add screenshots</button>` : ''}</div>
+        ${t.attachments.length ? `<div class="gallery">${t.attachments.map((n) => { const u = `/api/tickets/${t.id}/attachments/${encodeURIComponent(n)}`; return `<a href="${u}" target="_blank" rel="noopener" title="${esc(n)}"><img src="${u}" alt="${esc(n)}" loading="lazy"></a>`; }).join('')}</div>` : '<div class="empty" style="margin-top:10px">No screenshots. Paste one with <kbd>Ctrl</kbd> + <kbd>V</kbd> after pressing Add.</div>'}` : ''}
+      ${t.feedback.length ? `<h3>Change requests</h3>${t.feedback.map((f, i) => `<div class="box" style="margin-bottom:8px"><span class="faint small">round ${i + 2}</span><pre>${esc(f)}</pre></div>`).join('')}` : ''}`;
   } else if (page.tab === 'history') {
-    el.innerHTML = `<div class="history">${t.history.slice().reverse().map((h) => `<div><span class="muted">${new Date(h.at).toLocaleString()}</span> — ${esc(h.text)}</div>`).join('')}</div>`;
+    el.innerHTML = `<div class="history">${t.history.slice().reverse().map((h) => `<div><time>${new Date(h.at).toLocaleString()}</time>${esc(h.text)}</div>`).join('')}</div>`;
   } else if (page.tab === 'changes') {
-    el.innerHTML = `<p class="small muted">OpenCode re-codes on the same branch with your notes (no new Claude plan), then verify + review run again.</p>
+    el.innerHTML = `<p class="small muted">The coder re-works the same branch with your notes (no new plan), then verify + review run again.${t.pr ? ' The open PR is updated when you approve again.' : ''}</p>
       <textarea id="chg" rows="7" placeholder="What should change…"></textarea>
-      <div class="row" style="margin-top:8px"><button class="primary" onclick="act('changes', $('#chg').value)">Send back to the loop</button></div>`;
+      <div class="row" style="margin-top:10px"><button class="primary" onclick="act('changes', $('#chg').value)">${ic('redo')}Send back to the loop</button></div>`;
   }
 }
 async function loadLog(name) {
-  const { text, total } = await api('GET', `tickets/${T.id}/logs/${encodeURIComponent(name)}?tail=500`);
+  const { text, total, mtime } = await api('GET', `tickets/${T.id}/logs/${encodeURIComponent(name)}?tail=500`);
   const el = $('#logtext');
   if (!el) return;
+  const meta = $('#logmeta');
+  if (meta) {
+    const live = T.status === 'running' && name === page.logLatest;
+    const idle = (Date.now() - mtime) / 1000;
+    meta.innerHTML = !live ? (mtime ? `written ${ago(mtime)}` : '')
+      : idle > 300 ? `<span style="color:var(--warn)">● no output for ${dur(mtime)} — the model is slow or stuck</span>`
+      : `<span class="pill t-accent live"><i></i>live</span> last output ${idle < 5 ? 'just now' : `${dur(mtime)} ago`}`;
+  }
   const stick = el.parentElement.scrollTop + el.parentElement.clientHeight >= el.parentElement.scrollHeight - 30;
   el.textContent = (total > 500 ? `… ${total - 500} earlier lines\n` : '') + (text || '(empty)');
   if (stick) el.parentElement.scrollTop = el.parentElement.scrollHeight;
@@ -360,12 +770,33 @@ function renderDiff(text) {
 }
 const act = guard(async (a, text) => {
   if (a === 'reject' && !confirm(`Reject ${T.id}? Its worktree and unpushed branch are deleted.`)) return;
-  if (a === 'approve' && !confirm(`Push ${T.branch} and open a PR?`)) return;
+  if (a === 'approve' && !confirm(`Push ${T.branch} and ${T.pr ? 'update the PR' : 'open a PR'}?`)) return;
   T = await api('POST', `tickets/${T.id}/action/${a}`, { text });
-  toast(`${T.id} → ${T.status}`);
+  toast(`${T.id} → ${(ST[T.status] || [T.status])[0]}`);
   page.tab = a === 'changes' || a === 'answer' ? 'history' : page.tab;
   await refresh(); drawTicket();
 });
+// Same text format as hub/questions.mjs formatAnswers, so the planner sees one shape from UI or Telegram.
+function sendPicks(defaults) {
+  const qs = T.questionsData;
+  const lines = [];
+  for (const [i, x] of qs.entries()) {
+    const r = defaults ? null : document.querySelector(`input[name=q${i}]:checked`);
+    let a = r && r.value !== 'other' ? x.options[+r.value] : x.options[x.default];
+    if (r?.value === 'other') { a = $(`.qother[data-i="${i}"]`).value.trim(); if (!a) return toast(`Question ${i + 1}: type your answer or pick an option`, true); }
+    lines.push(`${i + 1}. ${x.q}\n→ ${a}`);
+  }
+  const note = $('#ans').value.trim();
+  act('answer', lines.join('\n') + (note ? `\nAlso: ${note}` : ''));
+}
+// The fix is merged, so "still broken" opens a new bug (same screenshots, linked back) instead of reopening this one.
+const stillBroken = guard(async () => {
+  const text = prompt(`What is still broken in ${T.id}? A new bug ticket is opened with this note and the same screenshots.`);
+  if (!text?.trim()) return;
+  T = await api('POST', `tickets/${T.id}/action/broken`, { text });
+  toast(`New bug ${T.reopenedAs} opened`); await refresh(); location.hash = `#/ticket/${T.reopenedAs}`;
+});
+const saveBrief = guard(async () => { T = await api('PUT', `tickets/${T.id}/brief`, { text: $('#brief').value }); toast('Plan saved'); drawTicket(); });
 const showEvidence = guard(async (path) => {
   const res = await fetch(`/api/tickets/${T.id}/evidence?path=${encodeURIComponent(path)}`);
   const o = $('#evText'); o.style.display = ''; o.textContent = await res.text();
@@ -377,30 +808,6 @@ const notify = guard(async (ids) => {
   toast(`${notifyLabel()}: ${r.ok ? 'done' : 'failed (see the ticket history)'}`, !r.ok);
   page.sel.clear(); await refresh(); render();
 });
-const saveBrief = guard(async () => { T = await api('PUT', `tickets/${T.id}/brief`, { text: $('#brief').value }); toast('plan saved'); drawTicket(); });
-
-// ---------------- new ticket ----------------
-function newTicket() {
-  if (!S.repos.length) { toast('Add a repo first (Repos tab)', true); location.hash = '#/repos'; return; }
-  const cur = page.v === 'repos' && page.name ? page.name : page.repo || S.repos[0].name;
-  $('#dlgForm').innerHTML = `<h2>New ticket</h2>
-    <label>Repo</label><select id="nRepo">${S.repos.map((r) => `<option ${r.name === cur ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
-    <label>Title</label><input id="nTitle" placeholder="Add CSV export to the orders page" required>
-    <label>Description <span class="muted">(goal, files you know, acceptance criteria)</span></label><textarea id="nDesc" rows="7"></textarea>
-    <label>Mode</label>
-    <div class="row"><label style="margin:0;color:var(--text)"><input type="radio" name="mode" value="full" checked style="width:auto"> Full — Claude plans, OpenCode codes, Claude reviews</label></div>
-    <div class="row"><label style="margin:0;color:var(--text)"><input type="radio" name="mode" value="quick" style="width:auto"> ⚡ Quick — OpenCode only (small, obvious changes; cheapest)</label></div>
-    <div class="row" style="margin-top:8px"><label style="margin:0;color:var(--text)"><input type="checkbox" id="nBacklog" style="width:auto"> Put in backlog (don't start yet)</label></div>
-    <div class="row" style="margin-top:16px;justify-content:flex-end"><button value="cancel" formnovalidate>Cancel</button><button class="primary" id="nGo" value="ok">Create</button></div>`;
-  const dlg = $('#dlg');
-  dlg.onclose = guard(async () => {
-    if (dlg.returnValue !== 'ok') return;
-    const t = await api('POST', 'tickets', { repo: $('#nRepo').value, title: $('#nTitle').value, description: $('#nDesc').value, quick: $('input[name=mode]:checked').value === 'quick', backlog: $('#nBacklog').checked });
-    toast(`${t.id} created (${t.status})`);
-    await refresh(); location.hash = `#/ticket/${t.id}`;
-  });
-  dlg.showModal(); $('#nTitle').focus();
-}
 
 // ---------------- import (runs the configured import command) ----------------
 const importTickets = guard(async () => {
@@ -409,10 +816,11 @@ const importTickets = guard(async () => {
   const row = (e) => `<tr><td><input type="checkbox" class="imp" value="${esc(e.key)}" style="width:auto" ${e.manual || e.existing ? 'disabled' : ''}></td>
     <td><b>${e.url ? `<a href="${esc(e.url)}" target="_blank">${esc(e.key)}</a>` : esc(e.key)}</b><div class="small muted">${esc(e.repo)}</div></td>
     <td>${esc(e.title)}<div class="small muted">${Object.entries(e.agents).filter(([, a]) => a).map(([s, a]) => `${s}: ${esc(a)}`).join(' · ')}</div>
-      ${e.manual ? `<div class="small b-modified">manual: ${esc(e.manual)}</div>` : ''}${e.existing ? `<div class="small muted">already ${esc(e.existing)}</div>` : ''}</td></tr>`;
+      ${e.manual ? `<div class="small" style="color:var(--warn)">manual: ${esc(e.manual)}</div>` : ''}${e.existing ? `<div class="small muted">already ${esc(e.existing)}</div>` : ''}</td></tr>`;
+  $('#dlg').style.width = ''; $('#dlgForm').onkeydown = null;
   $('#dlgForm').innerHTML = `<h2>Import tickets</h2>
     ${items.length ? `<table>${items.map(row).join('')}</table>` : '<p class="muted">Nothing to import.</p>'}
-    <div class="row" style="margin-top:8px"><label style="margin:0;color:var(--text)"><input type="checkbox" id="impBacklog" style="width:auto"> Put in backlog (don't start yet)</label></div>
+    <label class="check"><input type="checkbox" id="impBacklog"> Put in backlog (don't start yet)</label>
     <div class="row" style="margin-top:16px;justify-content:flex-end"><button value="cancel" formnovalidate>Cancel</button><button class="primary" value="ok">Create</button></div>`;
   const dlg = $('#dlg');
   dlg.onclose = guard(async () => {
@@ -426,14 +834,219 @@ const importTickets = guard(async () => {
   dlg.showModal();
 });
 
+// ---------------- screenshots ----------------
+// Resized here before upload: Claude bills an image at ~1 token per 28×28 px, so 1568px wide ≈ 1.8k tokens
+// instead of ≈ 4.8k at the model's 2576px limit, and text in UI screenshots stays readable.
+const SHOT_MAX_EDGE = 1568, SHOT_MAX = 6;
+const readUrl = (f) => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(f); });
+const shotTokens = (s) => Math.ceil((s.w * s.h) / 784);
+async function shrink(file) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, SHOT_MAX_EDGE / Math.max(bmp.width, bmp.height));
+  const w = Math.round(bmp.width * k), h = Math.round(bmp.height * k);
+  if (k === 1 && file.size < 1.5e6 && /^image\/(png|jpeg|webp)$/.test(file.type)) return { url: await readUrl(file), w, h };
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').drawImage(bmp, 0, 0, w, h);
+  let url = c.toDataURL('image/png');
+  if (url.length > 2e6) url = c.toDataURL('image/jpeg', 0.88); // photos / busy pages: PNG gets big
+  return { url, w, h };
+}
+// Drop zone + thumbnails inside el; also takes Ctrl+V anywhere in the open dialog.
+function shotPicker(el, max = SHOT_MAX) {
+  const shots = [];
+  const add = guard(async (files) => {
+    for (const f of [...files].filter((x) => x.type.startsWith('image/'))) {
+      if (shots.length >= max) { toast(`At most ${max} screenshots per ticket`, true); break; }
+      shots.push(await shrink(f));
+    }
+    draw();
+  });
+  const draw = () => {
+    el.innerHTML = `<div class="drop" tabindex="0">${ic('image')} Paste <kbd>Ctrl</kbd> + <kbd>V</kbd>, drop, or <u>choose</u> screenshots <span class="faint">· up to ${max} · resized to ≤${SHOT_MAX_EDGE}px</span></div>
+      <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
+      ${shots.length ? `<div class="shots">${shots.map((s, i) => `<div class="shot"><img src="${s.url}" alt="screenshot ${i + 1}"><button type="button" class="icon ghost small" data-i="${i}" title="Remove">${ic('x')}</button><span>${s.w}×${s.h} · ≈${kTok(shotTokens(s))} tok</span></div>`).join('')}</div>` : ''}`;
+    const drop = $('.drop', el), input = $('input[type=file]', el);
+    drop.onclick = () => input.click();
+    drop.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } };
+    input.onchange = () => add(input.files);
+    drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
+    drop.ondragleave = () => drop.classList.remove('over');
+    drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); add(e.dataTransfer.files); };
+    el.querySelectorAll('.shot button').forEach((b) => { b.onclick = () => { shots.splice(+b.dataset.i, 1); draw(); }; });
+  };
+  $('#dlgForm').onpaste = (e) => { const fs = [...(e.clipboardData?.files || [])]; if (fs.length) { e.preventDefault(); add(fs); } };
+  draw();
+  return { urls: () => shots.map((s) => s.url) };
+}
+function addShots() {
+  $('#dlg').style.width = ''; $('#dlgForm').onkeydown = null;
+  $('#dlgForm').innerHTML = `<div class="row"><h2>Add screenshots to ${T.id}</h2><span class="grow"></span><button class="icon ghost" value="cancel" formnovalidate title="Close">${ic('x')}</button></div>
+    <p class="small muted" style="margin:4px 0 0">${T.files.brief ? 'The plan is already written: press <b>Re-plan</b> afterwards so Claude looks at them.' : 'Claude reads them when it writes the plan.'}</p>
+    <div id="aShots" style="margin-top:12px"></div>
+    <div class="row" style="margin-top:22px;justify-content:flex-end"><button value="cancel" formnovalidate>Cancel</button><button class="primary" value="ok">Attach</button></div>`;
+  const picker = shotPicker($('#aShots'), SHOT_MAX - T.attachments.length);
+  const dlg = $('#dlg');
+  dlg.onclose = guard(async () => {
+    $('#dlgForm').onpaste = null;
+    if (dlg.returnValue !== 'ok' || !picker.urls().length) return;
+    T = await api('POST', `tickets/${T.id}/attachments`, { images: picker.urls() });
+    toast(`${picker.urls().length} screenshot(s) attached`); page.tab = 'ticket'; drawTicket();
+  });
+  dlg.showModal();
+}
+
+// ---------------- new ticket / bug ----------------
+const BUG_TEMPLATE = 'Steps to reproduce:\n1. \n\nExpected:\n\nActual:\n\nWhere: (page / URL, browser, error text from the console)';
+function newTicket(kind = 'feature') {
+  if (!S.repos.length) { toast('Add a repo first (Repos tab)', true); location.hash = '#/repos'; return; }
+  const cur = page.v === 'repos' && page.name ? page.name : page.repo || S.repos[0].name;
+  $('#dlg').style.width = ''; $('#dlgForm').onkeydown = null;
+  $('#dlgForm').innerHTML = `<div class="row"><h2 id="nHead"></h2><span class="grow"></span><div class="seg" id="nKind"><button type="button" data-k="feature">${ic('spark')}Feature</button><button type="button" data-k="bug">${ic('bug')}Bug</button></div><button class="icon ghost" value="cancel" formnovalidate title="Close">${ic('x')}</button></div>
+    <p class="small muted" style="margin:4px 0 0" id="nSub"></p>
+    <div class="grid2"><div><label>Repo</label><select id="nRepo">${S.repos.map((r) => `<option ${r.name === cur ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></div>
+      <div id="nSevWrap"><label>Severity</label><select id="nSev"><option value="low">Low — cosmetic</option><option value="medium" selected>Medium — works around it</option><option value="high">High — blocks a feature</option><option value="critical">Critical — data loss / outage</option></select></div></div>
+    <label>Title</label><input id="nTitle" required>
+    <label>Description <span class="faint" style="font-weight:400" id="nDescHint"></span></label><textarea id="nDesc" rows="7" style="font-family:var(--sans);font-size:13px"></textarea>
+    <div id="nShotsWrap"><label>Screenshots <span class="faint" style="font-weight:400">— Claude looks at them when planning the fix</span></label><div id="nShots"></div></div>
+    <label>Mode</label>
+    <div class="choices">
+      <label class="choice"><b><input type="radio" name="mode" value="full" checked>${ic('spark')}Full</b><span id="nFull"></span></label>
+      <label class="choice"><b><input type="radio" name="mode" value="quick">${ic('bolt')}Quick</b><span id="nQuick"></span></label>
+    </div>
+    <label class="check"><input type="checkbox" id="nBacklog"> Put in backlog (don't start yet)</label>
+    <div class="row" style="margin-top:22px;justify-content:flex-end"><button value="cancel" formnovalidate>Cancel</button><button class="primary" id="nGo" value="ok"></button></div>`;
+  const picker = shotPicker($('#nShots'));
+  const set = (k) => {
+    kind = k;
+    const bug = k === 'bug';
+    $('#nKind').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.k === k));
+    $('#nHead').textContent = bug ? 'Report a bug' : 'New ticket';
+    $('#nSub').textContent = bug ? 'Claude (plan) finds the root cause and writes a regression test into the brief; the coder fixes it on its own branch.' : 'Describe the change. The hub works on its own branch and stops before the PR.';
+    $('#nSevWrap').hidden = !bug; $('#nShotsWrap').hidden = !bug;
+    $('#nTitle').placeholder = bug ? 'Orders page shows $0 total after applying a coupon' : 'Add CSV export to the orders page';
+    $('#nDescHint').textContent = bug ? '— steps, expected vs actual, error text' : '— goal, files you know, acceptance criteria';
+    const d = $('#nDesc');
+    if (bug && !d.value.trim()) d.value = BUG_TEMPLATE; else if (!bug && d.value === BUG_TEMPLATE) d.value = '';
+    $('#nFull').textContent = bug ? 'Claude sees the screenshots, finds the root cause; coder fixes; Claude reviews.' : 'Claude plans, the coder codes, Claude reviews.';
+    $('#nQuick').textContent = bug ? 'Coder only, from your text. For obvious one-line fixes.' : 'Coder only. For small, obvious changes; cheapest.';
+    $('#nGo').textContent = bug ? 'Report bug' : 'Create ticket';
+  };
+  $('#nKind').querySelectorAll('button').forEach((b) => { b.onclick = () => set(b.dataset.k); });
+  set(kind);
+  const dlg = $('#dlg');
+  dlg.onclose = guard(async () => {
+    $('#dlgForm').onpaste = null;
+    if (dlg.returnValue !== 'ok') return;
+    const bug = kind === 'bug';
+    const desc = $('#nDesc').value;
+    const t = await api('POST', 'tickets', { repo: $('#nRepo').value, title: $('#nTitle').value, description: bug && desc === BUG_TEMPLATE ? '' : desc, quick: $('input[name=mode]:checked').value === 'quick',
+      backlog: $('#nBacklog').checked, kind, severity: bug ? $('#nSev').value : '', images: bug ? picker.urls() : [] });
+    toast(`${t.id} ${bug ? 'bug reported' : 'created'} (${(ST[t.status] || [t.status])[0]})`);
+    await refresh(); location.hash = `#/ticket/${t.id}`;
+  });
+  dlg.showModal(); $('#nTitle').focus();
+}
+
+// ---------------- plan tickets (import plan files / generate with Claude) ----------------
+let PL = { repo: '', tab: 'import', files: null, job: null, list: [], timer: null };
+function planTickets(repo) {
+  if (!S.repos.length) { toast('Add a repo first (Repos tab)', true); return; }
+  repo = repo || (page.v === 'repos' && page.name) || page.repo || S.repos[0].name;
+  if (PL.repo !== repo) PL = { ...PL, repo, files: null, job: null };
+  const dlg = $('#dlg'); dlg.onclose = () => clearInterval(PL.timer); dlg.style.width = 'min(860px, 94vw)';
+  $('#dlgForm').onkeydown = (e) => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.preventDefault(); }; // Enter in a title must not close it
+  $('#dlgForm').innerHTML = `<div class="row"><h2>Plan tickets</h2><select id="plRepo" style="width:auto">${S.repos.map((r) => `<option ${r.name === repo ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
+      <span class="grow"></span><button class="icon ghost" value="cancel" formnovalidate title="Close">${ic('x')}</button></div>
+    <p class="small muted" style="margin:6px 0 12px">Turn a plan into tickets. You review and edit them first; nothing is created until you press Add.</p>
+    <div class="seg" id="plTabs"></div><div id="plBody" class="plbody"></div><div id="plFoot"></div>`;
+  $('#plRepo').onchange = (e) => planTickets(e.target.value);
+  if (!dlg.open) dlg.showModal();
+  drawPlan();
+  if (!PL.files) api('GET', `repos/${encodeURIComponent(repo)}/plans`).then((r) => { PL.files = r.files; if (!r.files.length && PL.tab === 'import') PL.tab = 'generate'; drawPlan(); }, (e) => toast(e.message, true));
+  if (!PL.job) api('GET', `repos/${encodeURIComponent(repo)}/generate`).then((r) => { PL.job = r.job; drawPlan(); watchJob(); });
+}
+function watchJob() {
+  clearInterval(PL.timer);
+  if (PL.job?.status !== 'running') return;
+  const repo = PL.repo;
+  PL.timer = setInterval(async () => {
+    try { PL.job = (await api('GET', `repos/${encodeURIComponent(repo)}/generate`)).job; } catch { return; }
+    if (PL.job?.status !== 'running') { clearInterval(PL.timer); if (PL.job?.status === 'done') toast(`Claude proposed ${PL.job.items.length} ticket(s)`); }
+    if ($('#dlg').open && PL.repo === repo && PL.tab === 'generate') drawPlan();
+  }, 3000);
+}
+function planItem(it, i, checked) {
+  return `<div class="plitem ${it.ticket ? 'off' : ''}">
+    <input type="checkbox" data-i="${i}" ${checked && !it.ticket ? 'checked' : ''} ${it.ticket ? 'disabled' : ''}>
+    <div style="flex:1;min-width:0">
+      <div class="row" style="gap:6px">${it.key ? `<span class="chip mono">${esc(it.key)}</span>` : ''}<input class="pltitle" data-i="${i}" value="${esc(it.title)}">
+        ${it.ticket ? `<span class="chip">already ${it.ticket.id} · ${(ST[it.ticket.status] || [it.ticket.status])[0]}</span>` : ''}${it.superseded ? '<span class="pill t-neutral"><i></i>superseded</span>' : ''}</div>
+      <details><summary>Description</summary><textarea class="pldesc" data-i="${i}" rows="6">${esc(it.description)}</textarea></details>
+    </div></div>`;
+}
+function drawPlan() {
+  const nFiles = PL.files ? PL.files.reduce((n, f) => n + f.items.length, 0) : '';
+  $('#plTabs').innerHTML = [['import', `${ic('list')}From plan files <span class="faint">${nFiles}</span>`], ['generate', `${ic('spark')}Generate with Claude`]]
+    .map(([k, l]) => `<button type="button" class="${PL.tab === k ? 'on' : ''}" onclick="PL.tab='${k}';drawPlan()">${l}</button>`).join('');
+  const body = $('#plBody');
+  PL.list = [];
+  if (PL.tab === 'import') {
+    if (!PL.files) body.innerHTML = '<div class="row muted"><span class="spinner"></span>Reading .wiki/plans…</div>';
+    else if (!PL.files.length) body.innerHTML = '<div class="empty">No plan files with tickets in <code>.wiki/plans/</code>. Use <b>Generate with Claude</b>, or run <code>/kit-new</code> to write an MVP plan.</div>';
+    else body.innerHTML = PL.files.map((f) => {
+      const start = PL.list.length;
+      PL.list.push(...f.items);
+      return `<div class="row" style="margin:6px 0 8px"><b class="mono small">${esc(f.file)}</b><span class="count">${f.items.length}</span><span class="grow"></span>
+          <button type="button" class="small ghost" onclick="planCheck(${start},${PL.list.length},true)">Select new</button><button type="button" class="small ghost" onclick="planCheck(${start},${PL.list.length},false)">None</button></div>
+        ${f.items.map((it, j) => planItem(it, start + j, false)).join('')}`;
+    }).join('');
+  } else {
+    const j = PL.job;
+    body.innerHTML = `<label style="margin-top:0">What do you want to build?</label>
+      <textarea id="plGoal" rows="4" style="font-family:var(--sans);font-size:13px" placeholder="e.g. Add a watchlist page: save symbols, show live price + funding, alert when price crosses a level" ${j?.status === 'running' ? 'disabled' : ''}>${esc(j?.goal || '')}</textarea>
+      <div class="row" style="margin:10px 0 14px"><button type="button" class="primary small" id="plGen" ${j?.status === 'running' ? 'disabled' : ''}>${ic('spark')}${j?.status === 'done' ? 'Generate again' : 'Generate tickets'}</button>
+        <span class="small faint">Uses the plan engine (${esc(S.config.engines.plan.model || 'claude')}), read-only in the repo · existing tickets are not repeated</span></div>
+      ${j?.status === 'running' ? `<div class="hint"><span class="spinner"></span><span>Claude is reading the repo and splitting the goal into tickets, usually 1–3 min. You can close this window; it keeps going.</span></div>` : ''}
+      ${j?.status === 'failed' ? `<div class="box err"><pre>${esc(j.error)}</pre></div>` : ''}
+      ${j?.status === 'done' ? `<div class="row small muted" style="margin-bottom:8px">Proposed ${j.items.length} ticket(s) · Claude ≈ $${(j.costUsd || 0).toFixed(3)}${j.tokens ? ` · 🪙 ${kTok(j.tokens.in + j.tokens.out)} tokens` : ''} · edit titles or descriptions before adding</div>${j.items.map((it, i) => planItem(it, i, true)).join('')}` : ''}`;
+    if (j?.status === 'done') PL.list = j.items;
+    $('#plGen').onclick = guard(async () => {
+      PL.job = await api('POST', `repos/${encodeURIComponent(PL.repo)}/generate`, { goal: $('#plGoal').value });
+      drawPlan(); watchJob();
+    });
+  }
+  const n = () => [...document.querySelectorAll('#plBody input[type=checkbox]:checked')].length;
+  $('#plFoot').innerHTML = PL.list.length ? `<div class="row" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+      <span class="small muted">Add <b id="plN">${n()}</b> selected as</span>
+      <select id="plThen" style="width:auto"><option value="backlog">Backlog</option><option value="plan">Backlog + write plans now</option><option value="run">Queue now (plan + code)</option></select>
+      <span class="grow"></span><button type="button" class="primary" id="plAdd">${ic('plus')}Add tickets</button></div>` : '';
+  $('#plBody').onchange = () => { if ($('#plN')) $('#plN').textContent = n(); };
+  if ($('#plAdd')) $('#plAdd').onclick = guard(async () => {
+    const items = [...document.querySelectorAll('#plBody input[type=checkbox]:checked')].map((c) => {
+      const i = +c.dataset.i;
+      return { title: $(`.pltitle[data-i="${i}"]`).value, description: $(`.pldesc[data-i="${i}"]`).value, source: PL.list[i].source || '' };
+    });
+    const then = $('#plThen').value;
+    const made = await api('POST', 'tickets/bulk', { repo: PL.repo, items, then });
+    toast(`${made.length} ticket(s) added${then === 'plan' ? ' — writing plans' : then === 'run' ? ' and queued' : ' to the backlog'}`);
+    PL.files = null; if (PL.tab === 'generate') PL.job = null;
+    $('#dlg').close(); await refresh();
+    if (page.v === 'repos') drawRepoTickets(); else location.hash = `#/repos/${encodeURIComponent(PL.repo)}`;
+  });
+}
+function planCheck(from, to, on) {
+  document.querySelectorAll('#plBody input[type=checkbox]').forEach((c) => { const i = +c.dataset.i; if (i >= from && i < to && !c.disabled) c.checked = on && !PL.list[i].superseded; });
+  $('#plBody').onchange();
+}
+
 // ---------------- editor (shared by repos + kit) ----------------
 function editorHtml(f, saveLabel) {
-  return `<div class="row" style="margin-bottom:6px"><code>${esc(f.path)}</code>${f.writable ? '' : '<span class="badge">read-only</span>'}<span class="grow"></span>
+  return `<div class="row" style="margin-bottom:8px"><code>${esc(f.path)}</code>${f.writable ? '' : '<span class="chip">read-only</span>'}<span class="grow"></span>
       ${f.writable ? `<button class="primary small" id="edSave">${saveLabel}</button>` : ''}</div>
-    <textarea id="ed" rows="28" ${f.writable ? '' : 'readonly'}>${esc(f.text)}</textarea><div id="edOut" class="small" style="margin-top:6px"></div>`;
+    <textarea id="ed" rows="28" ${f.writable ? '' : 'readonly'}>${esc(f.text)}</textarea><div id="edOut" class="small" style="margin-top:8px"></div>`;
 }
 function bindEditor(save) {
-  const go = guard(async () => { const out = await save($('#ed').value); $('#edOut').innerHTML = out || '<span class="b-ok">saved</span>'; });
+  const go = guard(async () => { const out = await save($('#ed').value); $('#edOut').innerHTML = out || '<span class="b-ok">Saved</span>'; });
   if ($('#edSave')) $('#edSave').onclick = go;
   if ($('#ed')) $('#ed').onkeydown = (e) => { if (e.ctrlKey && e.key === 's') { e.preventDefault(); go(); } };
 }
@@ -444,10 +1057,16 @@ async function viewRepos(name) {
   if (!name && S.repos.length) { location.hash = `#/repos/${encodeURIComponent(S.repos[0].name)}`; return; }
   R = name ? await api('GET', `repos/${encodeURIComponent(name)}`) : null;
   drawRepo();
+  if (R?.e2e?.last?.status === 'running') watchE2e(R.name);
 }
 function drawRepo() {
-  const list = `<div class="panel list">${S.repos.map((r) => `<a href="#/repos/${encodeURIComponent(r.name)}" class="${R && R.name === r.name ? 'on' : ''}"><b>${esc(r.name)}</b><div class="small muted">${esc(r.path)}</div></a>`).join('') || '<p class="muted">No repos yet.</p>'}
-    <h3>Add repo</h3><input id="addPath" placeholder="D:/my-repo"><div class="row" style="margin-top:6px"><button class="small primary" onclick="addRepo()">Add</button></div></div>`;
+  const list = `<div class="panel list">${S.repos.map((r) => {
+    const n = S.tickets.filter((t) => t.repo === r.name && ['ready', 'running', 'needs_info', 'review', 'failed'].includes(t.status)).length;
+    return `<a href="#/repos/${encodeURIComponent(r.name)}" class="${R && R.name === r.name ? 'on' : ''}"><div class="row"><b>${esc(r.name)}</b><span class="grow"></span>${n ? `<span class="count">${n}</span>` : ''}</div>
+      <div class="small muted" style="word-break:break-all">${esc(r.path)}</div>
+      ${r.paused || r.autoRun || r.autoApprove || r.autoMerge ? `<div class="row" style="gap:4px;margin-top:5px">${r.paused ? '<span class="pill t-warn"><i></i>paused</span>' : ''}${r.autoRun ? '<span class="pill t-accent"><i></i>auto-run</span>' : ''}${r.autoApprove ? '<span class="pill t-accent"><i></i>auto-approve</span>' : ''}${r.autoMerge ? '<span class="pill t-violet"><i></i>auto-merge</span>' : ''}</div>` : ''}</a>`;
+  }).join('') || '<div class="empty">No repos yet.</div>'}
+    <div style="padding:6px 10px 6px"><h3>Add repo</h3><input id="addPath" placeholder="D:/my-repo"><div class="row" style="margin-top:8px"><button class="small primary" onclick="addRepo()">Add repo</button></div></div></div>`;
   if (!R) { $('#view').innerHTML = `<div class="split">${list}<div></div></div>`; return; }
   const k = R.kit;
   const kinds = ['agents', 'commands', 'skills', 'packs', 'hooks', 'other'];
@@ -455,40 +1074,55 @@ function drawRepo() {
     const items = R.installed.filter((i) => i.kind === kind);
     if (!items.length) return '';
     return `<tr><th colspan="4">${kind}</th></tr>${items.map((i) => `<tr>
-      <td><b>${esc(i.name)}</b>${i.override ? ' <span class="badge">local override</span>' : ''}</td>
+      <td><b>${esc(i.name)}</b>${i.override ? ' <span class="chip">local override</span>' : ''}</td>
       <td class="small muted">${i.tools.join(', ')}</td>
       <td class="small b-${i.status}">${i.status}</td>
-      <td style="text-align:right"><button class="small" onclick="openRepoFile(${js(i.files[0].path)})">view</button>
-        ${kind !== 'other' && !i.override ? `<button class="small" onclick="overrideItem(${js(kind)},${js(i.name)})">override</button>` : ''}</td></tr>`).join('')}`;
+      <td style="text-align:right"><button class="small ghost" onclick="openRepoFile(${js(i.files[0].path)})">View</button>
+        ${kind !== 'other' && !i.override ? `<button class="small ghost" onclick="overrideItem(${js(kind)},${js(i.name)})">Override</button>` : ''}</td></tr>`).join('')}`;
   }).join('');
-  const fileLinks = (arr) => arr.map((f) => `<a href="javascript:void 0" onclick="openRepoFile(${js(f)})">${esc(f)}</a>`).join('<br>') || '<span class="muted small">none</span>';
+  const fileLinks = (arr) => arr.map((f) => `<a href="javascript:void 0" onclick="openRepoFile(${js(f)})">${esc(f)}</a>`).join('<br>') || '<span class="faint small">none</span>';
   $('#view').innerHTML = `<div class="split">${list}<div>
     <div class="panel">
-      <div class="row"><h2>${esc(R.name)}</h2><span class="muted small">${esc(R.path)}</span>${R.exists ? '' : '<span class="badge b-missing">path missing</span>'}<span class="grow"></span>
-        <a href="#/board" onclick="page.repo=${js(R.name)}">${R.tickets} ticket(s) →</a></div>
+      <div class="row"><h2>${esc(R.name)}</h2><span class="muted small">${esc(R.path)}</span>${R.exists ? '' : '<span class="pill t-bad"><i></i>path missing</span>'}<span class="grow"></span>
+        <a href="#/prs" onclick="page.repo=${js(R.name)}" class="btn small">${ic('pr')}Pull requests</a>
+        <a href="#/board" onclick="page.repo=${js(R.name)}" class="btn small">Board →</a></div>
+      ${R.paused ? '<div class="warnbar" style="margin:14px 0 0">⏸ <div>This repo is <b>paused</b>: queued tickets wait until you resume it under Autopilot.</div></div>' : ''}
+      <div id="repoTickets" style="margin-top:18px">${repoTicketsHtml()}</div>
       <h3>Loop settings</h3>
       <div class="grid3">
         <div><label>Base branch</label><input id="rBase" value="${esc(R.base || '')}"></div>
-        <div><label>Setup command <span class="muted">(empty = auto)</span></label><input id="rSetup" value="${esc(R.setup ?? '')}" placeholder="${esc(R.resolved.setup || 'none')}"></div>
-        <div><label>Verify commands <span class="muted">(one per line; empty = auto)</span></label><textarea id="rVerify" rows="2" placeholder="${esc(R.resolved.verify.join('\n') || 'none detected')}">${esc((R.verify || []).join('\n'))}</textarea>
-          <label style="margin:2px 0 0;color:var(--text)"><input type="checkbox" id="rNoVerify" style="width:auto" ${R.verify && !R.verify.length ? 'checked' : ''}> no build check</label></div>
+        <div><label>Setup command <span class="faint">(empty = auto)</span></label><input id="rSetup" value="${esc(R.setup ?? '')}" placeholder="${esc(R.resolved.setup || 'none')}"></div>
+        <div><label>Verify commands <span class="faint">(one per line; empty = auto)</span></label><textarea id="rVerify" rows="2" placeholder="${esc(R.resolved.verify.join('\n') || 'none detected')}">${esc((R.verify || []).join('\n'))}</textarea>
+          <label class="check" style="margin:2px 0 0"><input type="checkbox" id="rNoVerify" ${R.verify && !R.verify.length ? 'checked' : ''}> no build check</label></div>
       </div>
-      <label>Advanced (JSON) <span class="muted">workspace · wiki · worktree · branch · fetchBase · test · agents {plan code review test} · commands {cleanup evidence publish notify}; placeholders {ticket} {id} {repo} {worktree} {branch} {base} {dir}</span></label>
+      <label>Advanced (JSON) <span class="faint">workspace · wiki · worktree · branch · fetchBase · test · agents {plan code review test} · commands {cleanup evidence publish notify}; placeholders {ticket} {id} {repo} {worktree} {branch} {base} {dir}</span></label>
       <textarea id="rAdv" rows="9" spellcheck="false">${esc(JSON.stringify(advanced(R), null, 2))}</textarea>
-      <div class="row" style="margin-top:8px"><button class="primary small" onclick="saveRepo()">Save</button><span class="small muted">In use → setup: <code>${esc(R.resolved.setup || '—')}</code> · verify: <code>${esc(R.resolved.verify.join(' && ') || '—')}</code></span>
+      <h3>Autopilot</h3>
+      <div class="box" style="background:var(--panel)">
+        <label class="check" style="margin:0"><input type="checkbox" id="rPaused" ${R.paused ? 'checked' : ''}><span><b>Pause this repo</b> <span class="muted">— queued tickets wait; a running one finishes</span></span></label>
+        <label class="check"><input type="checkbox" id="rAutoRun" ${R.autoRun ? 'checked' : ''}><span><b>Auto-run backlog</b> <span class="muted">— when this repo has nothing in flight, queue its oldest backlog ticket; the next one starts after it is merged or rejected</span></span></label>
+        <label class="check"><input type="checkbox" id="rAutoApprove" ${R.autoApprove ? 'checked' : ''}><span><b>Auto-approve</b> <span class="muted">— when checks and code review pass, push and open the PR without waiting for you</span></span></label>
+        <label class="check"><input type="checkbox" id="rAutoMerge" ${R.autoMerge ? 'checked' : ''}><span><b>Auto-merge PRs</b> <span class="muted">— merge as soon as GitHub allows, with</span></span>
+          <select id="rMerge" style="width:auto;padding:3px 8px">${['squash', 'merge', 'rebase'].map((m) => `<option ${(R.mergeMethod || 'squash') === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
+        <p class="small faint" style="margin:10px 0 0">The loop checks for queued tickets every few seconds. With both switches on, a ticket goes from queue to merged with no human step, so keep CI and branch protection on <code>${esc(R.base || 'main')}</code>.
+          If GitHub auto-merge is enabled for the repo, the PR waits for required checks; otherwise it merges right away.</p>
+      </div>
+      <div class="row" style="margin-top:10px"><button class="primary small" onclick="saveRepo()">Save</button><span class="small muted">In use → setup: <code>${esc(R.resolved.setup || '—')}</code> · verify: <code>${esc(R.resolved.verify.join(' && ') || '—')}</code></span>
         <span class="grow"></span><button class="small danger" onclick="removeRepo()">Remove from hub</button></div>
+
+      ${R.e2e ? e2eHtml(R.e2e) : ''}
 
       <h3>Kit in this repo</h3>
       <div class="row small">${k ? `installed <b>${esc(k.version)}</b>${k.version !== k.latest ? ` <span class="b-modified">(${esc(k.latest)} available)</span>` : ''} · tools ${esc(k.tools.join(', '))} · packs ${esc(k.packs.join(', ') || 'none')} · synced ${ago(k.syncedAt)}` : '<span class="b-missing">not synced yet</span>'}</div>
-      <div class="row" style="margin-top:8px"><button class="small" onclick="syncRepo(true)">Preview sync</button><button class="small primary" onclick="syncRepo(false)">Sync</button><button class="small" onclick="syncRepo(false, true)">Force sync</button><button class="small" onclick="doctorRepo()">Doctor</button></div>
-      <pre id="repoOut" class="box" style="margin-top:8px;display:none"></pre>
-      ${installed ? `<table style="margin-top:10px">${installed}</table>` : ''}
+      <div class="row" style="margin-top:10px"><button class="small" onclick="syncRepo(true)">Preview sync</button><button class="small primary" onclick="syncRepo(false)">Sync</button><button class="small" onclick="syncRepo(false, true)">Force sync</button><button class="small" onclick="doctorRepo()">Doctor</button></div>
+      <pre id="repoOut" class="box" style="margin-top:10px;display:none"></pre>
+      ${installed ? `<div class="tablewrap"><table>${installed}</table></div>` : ''}
       <div class="grid2" style="margin-top:6px">
         <div><h3>Local overrides (.kit/local)</h3><div class="small">${fileLinks(R.local)}</div></div>
         <div><h3>Memory &amp; root files</h3><div class="small">${fileLinks([...R.roots, ...R.wikiFiles])}</div></div>
       </div>
     </div>
-    <div class="panel" id="repoEd" style="margin-top:14px;display:none"></div>
+    <div class="panel" id="repoEd" style="margin-top:16px;display:none"></div>
   </div></div>`;
 }
 const addRepo = guard(async () => { const r = await api('POST', 'repos', { path: $('#addPath').value.trim() }); toast(r.text); await refresh(); viewRepos(S.repos.at(-1)?.name); });
@@ -498,9 +1132,102 @@ const saveRepo = guard(async () => {
   const lines = $('#rVerify').value.split('\n').map((s) => s.trim()).filter(Boolean);
   let adv;
   try { adv = JSON.parse($('#rAdv').value.trim() || '{}'); } catch (e) { throw new Error(`Advanced: ${e.message}`); }
-  R = await api('PUT', `repos/${encodeURIComponent(R.name)}`, { base: $('#rBase').value.trim(), setup: $('#rSetup').value.trim() || null, verify: $('#rNoVerify').checked ? [] : lines.length ? lines : null, advanced: adv });
-  await refresh();
-  toast('saved'); drawRepo();
+  R = await api('PUT', `repos/${encodeURIComponent(R.name)}`, { base: $('#rBase').value.trim(), setup: $('#rSetup').value.trim() || null, verify: $('#rNoVerify').checked ? [] : lines.length ? lines : null,
+    advanced: adv, paused: $('#rPaused').checked, autoRun: $('#rAutoRun').checked, autoApprove: $('#rAutoApprove').checked, autoMerge: $('#rAutoMerge').checked, mergeMethod: $('#rMerge').value });
+  await refresh(); toast('Saved'); drawRepo();
+});
+// ---------------- e2e (Playwright on the latest base; failing tests → bug tickets) ----------------
+const E2E_ST = { running: ['Running', 'accent'], passed: ['Passed', 'ok'], failed: ['Failed', 'bad'], error: ['Error', 'bad'], interrupted: ['Interrupted', 'warn'] };
+const tlinks = (ids) => ids.map((id) => `<a href="#/ticket/${id}">${id}</a>`).join(' ');
+function e2eStatus(E) {
+  const l = E.last;
+  if (!E.enabled) return '<span class="muted">No Playwright config found. Add <code>playwright.config.ts</code> to the repo, or set the command below.</span>';
+  if (!l) return '<span class="muted">Not run yet.</span>';
+  const [label, tone] = E2E_ST[l.status] || [l.status, 'neutral'];
+  return `<span class="pill t-${tone}${l.status === 'running' ? ' live' : ''}"><i></i>${label}</span><span>${ago(l.at)} on <code>${esc(l.base)}${l.sha ? ` @ ${esc(l.sha.slice(0, 7))}` : ''}</code></span>
+    ${l.status !== 'running' && l.status !== 'error' ? `<span>${l.passed} passed · <b style="${l.failed ? 'color:var(--bad)' : ''}">${l.failed} failed</b>${l.flaky ? ` · ${l.flaky} flaky` : ''}${l.skipped ? ` · ${l.skipped} skipped` : ''}</span>` : ''}
+    ${l.filed?.length ? `<span>new bugs ${tlinks(l.filed)}</span>` : ''}${l.still?.length ? `<span>still failing ${tlinks(l.still)}</span>` : ''}${l.verified?.length ? `<span>verified ${tlinks(l.verified)}</span>` : ''}
+    ${l.error ? `<span class="errline" style="flex-basis:100%">${esc(l.error.split('\n')[0])}</span>` : ''}`;
+}
+function e2eHtml(E) {
+  const run = E.last?.status === 'running';
+  return `<h3>End-to-end tests <span class="faint" style="font-weight:400">— Playwright on the latest <code>${esc(R.base || 'main')}</code>, shell only (no tokens)</span></h3>
+    <div class="box" style="background:var(--panel)">
+      <div class="row small" id="e2eStatus">${e2eStatus(E)}</div>
+      <div class="row" style="margin-top:10px"><button class="small primary" onclick="runE2e()" ${!E.enabled || run ? 'disabled' : ''}>${ic('play')}${run ? 'Running…' : 'Run now'}</button><button class="small" onclick="showE2eLog()">Log</button>
+        <span class="small faint">Each failing test → one bug ticket with its failure screenshot. When a fixed bug's test passes again, the bug is marked Verified.</span></div>
+      <div class="grid3">
+        <div><label>Command <span class="faint">(empty = auto)</span></label><input id="eCmd" value="${E.detected ? '' : esc(E.cmd)}" placeholder="${esc(E.cmd || 'npx playwright test')}"></div>
+        <div><label>Folder <span class="faint">(of playwright.config)</span></label><input id="eDir" value="${E.detected ? '' : esc(E.dir)}" placeholder="${esc(E.dir)}"></div>
+        <div><label>Run every <span class="faint">(hours; 0 = only on Run)</span></label><input type="number" min="0" id="eEvery" value="${E.everyHours}"></div>
+      </div>
+      <div class="grid3">
+        <div><label>Severity of filed bugs</label><select id="eSev">${['low', 'medium', 'high', 'critical'].map((s) => `<option ${E.severity === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+        <div><label>Group into one bug above <span class="faint">(failures)</span></label><input type="number" min="1" id="eMax" value="${E.maxBugs}"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="eFile" ${E.fileBugs ? 'checked' : ''}><span><b>File bug tickets</b> <span class="muted">— off: just report pass/fail</span></span></label>
+      <label class="check"><input type="checkbox" id="eAuto" ${E.autoFix ? 'checked' : ''}><span><b>Start fixing right away</b> <span class="muted">— filed bugs go to the queue instead of the backlog (spends plan tokens)</span></span></label>
+      <label class="check"><input type="checkbox" id="eVerify" ${E.inVerify ? 'checked' : ''}><span><b>Also run in each ticket's Verify step</b> <span class="muted">— catches regressions before review; slower tickets</span></span></label>
+      <p class="small faint" style="margin:10px 0 0">Screenshots need <code>use: { screenshot: 'only-on-failure' }</code> in the Playwright config; <code>webServer</code> starts the app (runs with <code>CI=1</code>). Keep the viewport ≤1568px wide so a screenshot stays ≈1.8k tokens or less.</p>
+      <div class="row" style="margin-top:10px"><button class="small primary" onclick="saveE2e()">Save e2e settings</button></div>
+      <pre id="e2eOut" class="box" style="margin-top:10px;display:none;max-height:380px;overflow:auto"></pre>
+    </div>`;
+}
+const saveE2e = guard(async () => {
+  R = await api('PUT', `repos/${encodeURIComponent(R.name)}`, { e2e: { cmd: $('#eCmd').value, dir: $('#eDir').value || '.', everyHours: $('#eEvery').value, severity: $('#eSev').value,
+    maxBugs: $('#eMax').value, fileBugs: $('#eFile').checked, autoFix: $('#eAuto').checked, inVerify: $('#eVerify').checked } });
+  toast('E2E settings saved'); drawRepo();
+});
+let e2eTimer = null;
+async function watchE2e(name) {
+  clearTimeout(e2eTimer);
+  if (page.v !== 'repos' || R?.name !== name) return;
+  const { last, log } = await api('GET', `repos/${encodeURIComponent(name)}/e2e`);
+  R.e2e.last = last;
+  if ($('#e2eStatus')) $('#e2eStatus').innerHTML = e2eStatus(R.e2e);
+  const out = $('#e2eOut');
+  if (out && out.style.display !== 'none') { const end = out.scrollTop + out.clientHeight >= out.scrollHeight - 30; out.textContent = log || '(empty)'; if (end) out.scrollTop = out.scrollHeight; }
+  if (last?.status === 'running') e2eTimer = setTimeout(() => watchE2e(name), 3000);
+  else { await refresh(); drawRepo(); if (last?.filed?.length) toast(`${last.filed.length} bug ticket(s) filed from e2e`); }
+}
+const runE2e = guard(async () => {
+  await api('POST', `repos/${encodeURIComponent(R.name)}/e2e`, {});
+  toast('E2E run started'); $('#e2eOut').style.display = 'block'; watchE2e(R.name);
+});
+const showE2eLog = guard(async () => { const o = $('#e2eOut'); o.style.display = o.style.display === 'none' ? 'block' : 'none'; if (o.style.display === 'block') await watchE2e(R.name); });
+
+function repoTicketsHtml() {
+  const ts = S.tickets.filter((t) => t.repo === R.name).sort(byIndex);
+  const backlog = ts.filter((t) => t.status === 'backlog').length;
+  const unplanned = ts.filter((t) => t.status === 'backlog' && !t.planned).length;
+  const planBtn = (t) => t.status === 'backlog' ? `<button class="small ghost" onclick="repoAct('${t.id}','plan')" title="${t.planned ? 'Write the brief again' : 'Write the brief only; code later'}">${ic('pen')}${t.planned ? 'Re-plan' : 'Plan'}</button>` : '';
+  const rowAct = (t) => ['backlog', 'failed'].includes(t.status) ? `<span class="row" style="flex-wrap:nowrap;justify-content:flex-end">${planBtn(t)}<button class="small primary" onclick="repoAct('${t.id}','run')">${ic('play')}${t.status === 'failed' ? 'Retry' : 'Start'}</button></span>`
+    : t.status === 'ready' ? `<button class="small" onclick="repoAct('${t.id}','stop')">${ic('stop')}Unqueue</button>`
+    : t.status === 'running' ? `<button class="small danger" onclick="repoAct('${t.id}','stop')">${ic('stop')}Stop</button>`
+    : `<a class="btn small" href="#/ticket/${t.id}">Open</a>`;
+  return `<div class="row"><b>Tickets</b><span class="count">${ts.length}</span><span class="grow"></span>
+      ${unplanned ? `<button class="small" onclick="planBacklog()" title="Write briefs for backlog tickets that have none; nothing is coded">${ic('pen')}Plan all backlog (${unplanned})</button>` : ''}
+      ${backlog ? `<button class="small" onclick="startBacklog()">${ic('play')}Start all backlog (${backlog})</button>` : ''}
+      <button class="small" onclick="planTickets()">${ic('list')}Plan tickets…</button>
+      <button class="small primary" onclick="newTicket()">${ic('plus')}New ticket</button></div>
+    ${ts.length ? `<div class="tablewrap"><table>${ts.map((t) => `<tr>
+        <td class="mono small faint" style="width:56px">${t.id}</td>
+        <td><a href="#/ticket/${t.id}" style="color:var(--text);font-weight:500">${esc(t.title)}</a>${t.status === 'backlog' && t.planned ? ` <a class="chip" href="#/ticket/${t.id}" title="open the plan">${ic('pen')}plan ready</a>` : ''}${t.pr ?` <a class="chip" href="${esc(t.pr)}" target="_blank" rel="noopener">${ic('pr')}#${prNum(t.pr) || 'PR'}</a>` : ''}</td>
+        <td style="width:1%" title="${esc(t.waiting || '')}">${pill(t.status, t.stage)}${['ready', 'backlog'].includes(t.status) && t.waiting ? `<div class="small faint" style="white-space:nowrap;margin-top:3px">⏳ ${esc(t.waiting)}</div>` : ''}</td><td class="small faint" style="white-space:nowrap;width:1%">${ago(t.updatedAt)}</td>
+        <td style="text-align:right;width:1%">${rowAct(t)}</td></tr>`).join('')}</table></div>`
+      : '<div class="empty" style="margin-top:10px">No tickets for this repo yet. Create one, or run <code>/ticket</code> inside the repo.</div>'}`;
+}
+const drawRepoTickets = () => { const el = $('#repoTickets'); if (el && R) el.innerHTML = repoTicketsHtml(); };
+const repoAct = guard(async (id, a) => { const t = await api('POST', `tickets/${id}/action/${a}`, {}); await refresh(); drawRepoTickets(); toast(`${id} → ${(ST[t.status] || [t.status])[0]}`); });
+const planBacklog = guard(async () => {
+  const ids = S.tickets.filter((t) => t.repo === R.name && t.status === 'backlog' && !t.planned).map((t) => t.id);
+  for (const id of ids) await api('POST', `tickets/${id}/action/plan`, {});
+  await refresh(); drawRepoTickets(); toast(`Planning ${ids.length} ticket(s); they come back to the backlog with a plan`);
+});
+const startBacklog = guard(async () => {
+  const ids = S.tickets.filter((t) => t.repo === R.name && t.status === 'backlog').map((t) => t.id);
+  for (const id of ids) await api('POST', `tickets/${id}/action/run`, {});
+  await refresh(); drawRepoTickets(); toast(`${ids.length} ticket(s) queued${R.paused ? ' (repo is paused)' : ''}`);
 });
 const removeRepo = guard(async () => { if (!confirm(`Remove ${R.name} from the hub? (files are not touched)`)) return; await api('DELETE', `repos/${encodeURIComponent(R.name)}`); await refresh(); location.hash = '#/repos'; R = null; viewRepos(); });
 const syncRepo = guard(async (dry, force) => {
@@ -513,14 +1240,14 @@ const doctorRepo = guard(async () => { const r = await api('GET', `repos/${encod
 const openRepoFile = guard(async (path) => {
   const f = await api('GET', `repos/${encodeURIComponent(R.name)}/file?path=${encodeURIComponent(path)}`);
   const el = $('#repoEd'); el.style.display = '';
-  el.innerHTML = editorHtml(f, 'Save') + (f.writable ? '' : '<p class="small muted">Synced from the kit. Use "override" to customise it for this repo, or edit the source in the Kit tab.</p>');
-  bindEditor(async (text) => { await api('PUT', `repos/${encodeURIComponent(R.name)}/file`, { path, text }); return path.startsWith('.kit/local/') ? '<span class="b-ok">saved</span> — click <b>Sync</b> to apply it to .claude/.opencode' : ''; });
+  el.innerHTML = editorHtml(f, 'Save') + (f.writable ? '' : '<p class="small muted">Synced from the kit. Use "Override" to customise it for this repo, or edit the source in the Kit tab.</p>');
+  bindEditor(async (text) => { await api('PUT', `repos/${encodeURIComponent(R.name)}/file`, { path, text }); return path.startsWith('.kit/local/') ? '<span class="b-ok">Saved</span> — click <b>Sync</b> to apply it to .claude/.opencode' : ''; });
   el.scrollIntoView({ behavior: 'smooth' });
 });
 const overrideItem = guard(async (kind, name) => {
   const r = await api('POST', `repos/${encodeURIComponent(R.name)}/override`, { kind, name });
   R = await api('GET', `repos/${encodeURIComponent(R.name)}`); drawRepo();
-  toast(`copied to ${r.path}; edit, then Sync`); openRepoFile(r.path);
+  toast(`Copied to ${r.path}; edit, then Sync`); openRepoFile(r.path);
 });
 
 // ---------------- kit ----------------
@@ -530,15 +1257,15 @@ async function viewKit(path) {
   const groups = ['agents', 'commands', 'skills', 'packs', 'hooks'];
   const list = groups.map((g) => `<div class="grp">${g}</div>${K.items.filter((i) => i.kind === g).map((i) => {
     const over = i.budget && i.lines > i.budget;
-    return `<a href="#/kit/${encodeURIComponent(i.path)}" class="${i.path === path ? 'on' : ''}" title="${esc(i.description)}"><div class="row"><b>${esc(i.name)}</b>${i.model ? `<span class="badge">${esc(i.model)}</span>` : ''}${i.targets ? `<span class="badge">${esc(i.targets.join('/'))} only</span>` : ''}<span class="grow"></span><span class="small ${over ? 'b-over' : 'muted'}">${i.lines}${i.budget ? `/${i.budget}` : ''}</span></div></a>`;
+    return `<a href="#/kit/${encodeURIComponent(i.path)}" class="${i.path === path ? 'on' : ''}" title="${esc(i.description)}"><div class="row"><b>${esc(i.name)}</b>${i.model ? `<span class="chip">${esc(i.model)}</span>` : ''}${i.targets ? `<span class="chip">${esc(i.targets.join('/'))} only</span>` : ''}<span class="grow"></span><span class="small ${over ? 'b-over' : 'faint'}">${i.lines}${i.budget ? `/${i.budget}` : ''}</span></div></a>`;
   }).join('')}`).join('') + `<div class="grp">config &amp; templates</div>${K.files.map((f) => `<a href="#/kit/${encodeURIComponent(f)}" class="${f === path ? 'on' : ''}"><span class="small">${esc(f)}</span></a>`).join('')}`;
   $('#view').innerHTML = `<div class="split"><div class="panel list" style="max-height:80vh;overflow:auto">
-      <div class="row" style="padding:0 9px"><b>Kit ${esc(K.version)}</b><span class="grow"></span><button class="small" onclick="kitLint()">Lint</button></div>${list}</div>
-    <div class="panel" id="kitEd"><p class="muted">Pick an agent, command, skill or pack. These are the sources: edits reach a repo when you <b>Sync</b> it (Repos tab). Numbers are body lines / budget.</p><pre id="kitOut" class="box" style="display:none"></pre></div></div>`;
+      <div class="row" style="padding:4px 10px"><b>Kit ${esc(K.version)}</b><span class="grow"></span><button class="small" onclick="kitLint()">Lint</button></div>${list}</div>
+    <div class="panel" id="kitEd"><p class="muted" style="margin-top:0">Pick an agent, command, skill or pack. These are the sources: edits reach a repo when you <b>Sync</b> it (Repos tab). Numbers are body lines / budget.</p><pre id="kitOut" class="box" style="display:none"></pre></div></div>`;
   if (path) {
     const f = await api('GET', `kit/file?path=${encodeURIComponent(path)}`);
     const item = K.items.find((i) => i.path === path);
-    $('#kitEd').innerHTML = (item?.description ? `<p class="small muted">${esc(item.description)}</p>` : '') + editorHtml(f, 'Save + lint');
+    $('#kitEd').innerHTML = (item?.description ? `<p class="small muted" style="margin-top:0">${esc(item.description)}</p>` : '') + editorHtml(f, 'Save + lint');
     bindEditor(async (text) => { const r = await api('PUT', 'kit/file', { path, text }); K = null; return `<pre class="${r.lint === 'lint: ok' ? 'b-ok' : 'b-over'}">${esc(r.lint)}</pre>`; });
   }
 }
@@ -548,47 +1275,63 @@ const kitLint = guard(async () => { const r = await api('GET', 'kit/lint'); cons
 function viewSettings() {
   const c = S.config;
   const eng = (k, label) => `<div><label>${label}</label><div class="row" style="flex-wrap:nowrap">
-      <select id="e_${k}_tool" style="width:110px"><option ${c.engines[k].tool === 'claude' ? 'selected' : ''}>claude</option><option ${c.engines[k].tool === 'opencode' ? 'selected' : ''}>opencode</option></select>
+      <select id="e_${k}_tool" style="width:120px"><option ${c.engines[k].tool === 'claude' ? 'selected' : ''}>claude</option><option ${c.engines[k].tool === 'opencode' ? 'selected' : ''}>opencode</option></select>
       <input id="e_${k}_model" list="models" value="${esc(c.engines[k].model)}" placeholder="default"></div>
       <input id="e_${k}_agent" value="${esc(c.engines[k].agent || '')}" placeholder="agent (optional)" style="margin-top:4px"></div>`;
   const num = (sec, k, label) => `<div><label>${label}</label><input type="number" id="n_${sec}_${k}" value="${c[sec][k]}"></div>`;
-  $('#view').innerHTML = `<div class="panel" style="max-width:880px">
-    <h2>Settings</h2><p class="small muted">Stored in ~/.kit-hub/hub.json. Applies to the next stage that starts.</p>
+  const cur = theme();
+  $('#view').innerHTML = `<div class="pagehead"><div><h2>Settings</h2><p class="small muted">Stored in ~/.kit-hub/hub.json. Applies to the next stage that starts.</p></div></div>
+    <div class="panel" style="max-width:900px">
     <datalist id="models"><option>opus</option><option>sonnet</option><option>haiku</option><option>opencode/big-pickle</option></datalist>
+    <h3 style="margin-top:0">Appearance</h3>
+    <div class="seg">${THEMES.map(([k, icon, label]) => `<button type="button" class="${k === cur ? 'on' : ''}" onclick="theme('${k}');viewSettings()">${ic(icon)}${label.replace(' theme', '')}</button>`).join('')}</div>
+    <span class="small faint" style="margin-left:8px">saved in this browser</span>
     <h3>Engines</h3><p class="small muted">An agent is a Claude Code agent name (<code>claude --agent</code>); a repo's or ticket's agents override it.</p>
     <div class="grid3">${eng('plan', 'Plan (once per ticket)')}${eng('code', 'Code + fixes')}${eng('review', 'Review')}${eng('test', 'Test (repos with test on)')}</div>
-    <h3>Import &amp; notify</h3><div class="grid2">
-      <div><label>Import command <span class="muted">(prints a JSON list of tickets)</span></label><input id="impCmd" value="${esc(c.import.command)}" placeholder="off"></div>
-      <div><label>Notify button label</label><input id="notifyLabel" value="${esc(c.ui.notifyLabel || '')}" placeholder="Notify"></div></div>
-    <h3>Limits</h3><div class="grid3">${num('limits', 'maxParallel', 'Tickets in parallel (1 per repo)')}${num('limits', 'fixIterations', 'Verify-fix attempts')}${num('limits', 'reviewRounds', 'Review fix rounds')}
+    <div class="grid3"><div style="grid-column:span 2"><label>Finished-ticket report <span class="faint" style="font-weight:400">— plain language + engineer notes for Telegram, the Result tab and the PR</span></label>
+      <div class="row" style="flex-wrap:nowrap"><select id="e_summary_tool" style="width:120px"><option ${(c.engines.summary?.tool || 'claude') === 'claude' ? 'selected' : ''}>claude</option><option value="off" ${c.engines.summary?.tool === 'off' ? 'selected' : ''}>off</option></select>
+      <input id="e_summary_model" list="models" value="${esc(c.engines.summary?.model ?? 'haiku')}" placeholder="haiku"></div></div>
+      <div><label>Escalate coding after N failed attempts <span class="faint" style="font-weight:400">(0 = off)</span></label>
+      <div class="row" style="flex-wrap:nowrap"><input type="number" min="0" id="esc_after" value="${c.engines.escalate?.after ?? 0}" style="width:70px"><select id="e_escalate_tool" style="width:110px"><option ${(c.engines.escalate?.tool || 'claude') === 'claude' ? 'selected' : ''}>claude</option><option ${c.engines.escalate?.tool === 'opencode' ? 'selected' : ''}>opencode</option></select>
+      <input id="e_escalate_model" list="models" value="${esc(c.engines.escalate?.model ?? 'sonnet')}" placeholder="sonnet"></div></div></div>
+    <div class="grid3"><div style="grid-column:span 2"><label>Resolve PR conflicts <span class="faint" style="font-weight:400">— auto-merge repos: merge the base into a conflicting PR, resolve, verify, push</span></label>
+      <div class="row" style="flex-wrap:nowrap"><select id="e_resolve_tool" style="width:120px">${['claude', 'opencode', 'off'].map((k) => `<option ${(c.engines.resolve?.tool || 'claude') === k ? 'selected' : ''}>${k}</option>`).join('')}</select>
+      <input id="e_resolve_model" list="models" value="${esc(c.engines.resolve?.model ?? 'opus')}" placeholder="opus"></div></div></div>
+    <h3>Limits</h3><div class="grid3">${num('limits', 'maxParallel', 'Coding tickets in parallel (1 per repo)')}${num('limits', 'maxPlanning', 'Plan-only runs in parallel (0 = queue like coding)')}${num('limits', 'fixIterations', 'Verify-fix attempts')}${num('limits', 'reviewRounds', 'Review fix rounds')}
       ${num('limits', 'stageTimeoutMin', 'Stage timeout (min)')}${num('limits', 'claudeBudgetUsd', 'Max $ per Claude call')}${num('review', 'skipUnderLines', 'Skip review under N lines')}</div>
+    <h3>Worktrees</h3><div class="grid2"><div><label>Folder for ticket worktrees <span class="faint" style="font-weight:400">(empty = ~/.kit-hub/worktrees; applies to new worktrees)</span></label><input id="wtDir" value="${esc(c.worktreeDir || '')}" placeholder="D:/kit-worktrees"></div></div>
     <h3>Pull requests &amp; notifications</h3>
-    <div class="grid3"><div><label>PR</label><label style="color:var(--text)"><input type="checkbox" id="prDraft" style="width:auto" ${c.pr.draft ? 'checked' : ''}> open as draft</label></div>
+    <div class="grid3"><div><label>PR</label><label class="check" style="margin-top:8px"><input type="checkbox" id="prDraft" ${c.pr.draft ? 'checked' : ''}> Open as draft</label></div>
       <div><label>ntfy topic</label><input id="ntfyTopic" value="${esc(c.ntfy.topic)}" placeholder="off"></div>
-      <div><label>Telegram</label><div class="small" style="padding-top:6px">${c.telegram.enabled ? `on · ${c.telegram.paired} paired chat(s)` : 'off — run <code>kit hub telegram &lt;token&gt;</code>'}</div></div></div>
-    <div class="row" style="margin-top:16px"><button class="primary" onclick="saveSettings()">Save</button></div></div>`;
+      <div><label>Telegram</label><div class="small" style="padding-top:8px">${c.telegram.enabled ? `<span class="pill t-ok"><i></i>on · ${c.telegram.paired} paired chat(s)</span>` : 'off — run <code>kit hub telegram &lt;token&gt;</code>'}</div></div></div>
+    <h3>Import &amp; notify</h3><div class="grid2">
+      <div><label>Import command <span class="faint" style="font-weight:400">(prints a JSON list of tickets)</span></label><input id="impCmd" value="${esc(c.import.command)}" placeholder="off"></div>
+      <div><label>Notify button label</label><input id="notifyLabel" value="${esc(c.ui.notifyLabel || '')}" placeholder="Notify"></div></div>
+    <div class="row" style="margin-top:22px"><button class="primary" onclick="saveSettings()">Save settings</button></div></div>`;
 }
 const saveSettings = guard(async () => {
-  const e = (k) => ({ tool: $(`#e_${k}_tool`).value, model: $(`#e_${k}_model`).value.trim(), agent: $(`#e_${k}_agent`).value.trim() });
+  const e = (k) => ({ tool: $(`#e_${k}_tool`).value, model: $(`#e_${k}_model`).value.trim(), ...($(`#e_${k}_agent`) ? { agent: $(`#e_${k}_agent`).value.trim() } : {}) });
   const n = (sec, k) => Number($(`#n_${sec}_${k}`).value);
   S.config = await api('PUT', 'config', {
-    engines: { plan: e('plan'), code: e('code'), review: e('review'), test: e('test') },
+    engines: { plan: e('plan'), code: e('code'), review: e('review'), test: e('test'), summary: e('summary'), resolve: e('resolve'), escalate: { ...e('escalate'), after: Number($('#esc_after').value) || 0 } },
     import: { command: $('#impCmd').value.trim() }, ui: { notifyLabel: $('#notifyLabel').value.trim() },
-    limits: { maxParallel: n('limits', 'maxParallel'), fixIterations: n('limits', 'fixIterations'), reviewRounds: n('limits', 'reviewRounds'), stageTimeoutMin: n('limits', 'stageTimeoutMin'), claudeBudgetUsd: n('limits', 'claudeBudgetUsd') },
-    review: { skipUnderLines: n('review', 'skipUnderLines') }, pr: { draft: $('#prDraft').checked }, ntfy: { topic: $('#ntfyTopic').value.trim() },
+    limits: { maxParallel: n('limits', 'maxParallel'), maxPlanning: n('limits', 'maxPlanning'), fixIterations: n('limits', 'fixIterations'), reviewRounds: n('limits', 'reviewRounds'), stageTimeoutMin: n('limits', 'stageTimeoutMin'), claudeBudgetUsd: n('limits', 'claudeBudgetUsd') },
+    review: { skipUnderLines: n('review', 'skipUnderLines') }, worktreeDir: $('#wtDir').value, pr: { draft: $('#prDraft').checked }, ntfy: { topic: $('#ntfyTopic').value.trim() },
   });
-  toast('settings saved');
+  toast('Settings saved');
 });
 
 // ---------------- shell ----------------
 async function refresh() {
   S = await api('GET', 'state');
   const p = S.daemon.paused;
-  $('#loop').innerHTML = `<span class="dot ${p ? 'paused' : 'on'}"></span>loop ${p ? 'paused' : 'running'} · ${S.tickets.filter((t) => t.status === 'running').length} active`;
-  $('#loopBtn').textContent = p ? '▶ Resume loop' : '⏸ Pause loop';
+  const active = S.tickets.filter((t) => t.status === 'running').length;
+  $('#loop').innerHTML = `<span class="row" style="gap:7px;flex-wrap:nowrap"><span class="dot ${p ? 'paused' : 'on'}"></span><span class="txt">Loop ${p ? 'paused' : 'running'} · ${active} active</span></span>`;
+  $('#loopBtn').innerHTML = p ? `${ic('play')}Resume` : `${ic('pause')}Pause`;
+  $('#loopBtn').title = p ? 'Resume the loop' : 'Pause the loop (running tickets finish)';
   $('#importBtn').style.display = S.config.import.command ? '' : 'none'; // optional: only with an import command
 }
-$('#loopBtn').onclick = guard(async () => { await api('POST', 'loop', { paused: !S.daemon.paused }); await refresh(); toast(S.daemon.paused ? 'loop paused (running tickets finish)' : 'loop resumed'); });
+$('#loopBtn').onclick = guard(async () => { await api('POST', 'loop', { paused: !S.daemon.paused }); await refresh(); toast(S.daemon.paused ? 'Loop paused (running tickets finish)' : 'Loop resumed'); });
 
 async function render() {
   const [v, ...rest] = location.hash.replace(/^#\/?/, '').split('/');
@@ -597,12 +1340,16 @@ async function render() {
   document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.v === (page.v === 'ticket' ? 'board' : page.v)));
   try {
     if (page.v === 'board') viewBoard();
+    else if (page.v === 'prs') await viewPrs();
     else if (page.v === 'ticket') await viewTicket(arg);
     else if (page.v === 'repos') { page.name = arg; await viewRepos(arg); }
     else if (page.v === 'kit') await viewKit(arg);
     else if (page.v === 'settings') viewSettings();
-  } catch (e) { $('#view').innerHTML = `<div class="panel err"><pre>${esc(e.message)}</pre></div>`; }
+  } catch (e) { $('#view').innerHTML = `<div class="box err"><pre>${esc(e.message)}</pre></div>`; }
+  window.scrollTo({ top: 0 });
 }
+
+const typing = () => ['TEXTAREA', 'INPUT', 'SELECT'].includes(document.activeElement?.tagName) || $('#dlg').open;
 
 // Live updates without stealing focus from editors.
 async function poll() {
@@ -610,29 +1357,35 @@ async function poll() {
     const before = JSON.stringify(S.tickets);
     await refresh();
     const changed = before !== JSON.stringify(S.tickets);
-    const typing = ['TEXTAREA', 'INPUT', 'SELECT'].includes(document.activeElement?.tagName) || $('#dlg').open;
-    if (page.v === 'board' && changed && !typing) viewBoard();
+    if (page.v === 'board' && (changed || S.tickets.some((t) => t.status === 'running')) && !typing()) viewBoard(); // running: keep elapsed time fresh
+    if (page.v === 'repos' && changed) drawRepoTickets();
     if (page.v === 'ticket' && T) {
       const s = S.tickets.find((t) => t.id === T.id);
-      if (s && (changed || s.status === 'running') && !typing) {
+      if (s && (changed || s.status === 'running') && !typing()) {
         if (page.tab === 'logs' && s.status === 'running' && s.updatedAt === T.updatedAt) { if (page.log) loadLog(page.log); }
         else await viewTicket(T.id, true);
       }
     }
-  } catch { $('#loop').innerHTML = '<span class="dot"></span>daemon unreachable'; }
+  } catch { $('#loop').innerHTML = '<span class="row" style="gap:7px"><span class="dot"></span><span class="txt">Daemon unreachable</span></span>'; }
+}
+async function pollPrs() {
+  try {
+    const hadOpen = P && P.prs.filter((p) => p.state === 'OPEN').length;
+    await loadPrs();
+    if (page.v === 'prs' && !typing()) viewPrs();
+    else if (page.v === 'board' && hadOpen !== P.prs.filter((p) => p.state === 'OPEN').length && !typing()) viewBoard();
+  } catch { /* gh unavailable; the PR page shows the error */ }
 }
 
-// Light/dark switch in the top bar; the choice is per browser (localStorage), "auto" follows the OS.
-function setTheme(t) {
-  try { t === 'auto' ? localStorage.removeItem('kit-theme') : localStorage.setItem('kit-theme', t); } catch { /* storage blocked: applies until reload */ }
-  if (t === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
-  document.querySelectorAll('#theme button').forEach((b) => { b.classList.toggle('on', b.dataset.t === t); b.setAttribute('aria-pressed', b.dataset.t === t); });
-}
-setTheme(document.documentElement.dataset.theme || 'auto');
-
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey || typing()) return;
+  if (['n', 'b'].includes(e.key.toLowerCase())) { e.preventDefault(); newTicket(e.key.toLowerCase() === 'b' ? 'bug' : 'feature'); }
+  else if (e.key === '[' || e.key === ']') { e.preventDefault(); gotoNeighbour(e.key === '[' ? -1 : 1); }
+});
 window.addEventListener('hashchange', render);
-refresh().then(render);
+refresh().then(render).then(pollPrs);
 setInterval(poll, 3000);
+setInterval(pollPrs, 60000);
 </script>
 </body>
 </html>

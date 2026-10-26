@@ -7,7 +7,7 @@
   "footprint": "tracked",
   "rootMd": { "mode": "block" },
   "memory": { "dir": ".wiki" },
-  "delegate": { "engine": "opencode", "model": "", "timeoutMin": 20, "opencodeAgent": "kit-worker" },
+  "delegate": { "engine": "opencode", "model": "ollama/qwen3:8b-32k", "timeoutMin": 20, "opencodeAgent": "kit-worker" },
   "models": { "opencode": { "haiku": "", "sonnet": "", "opus": "" } },
   "budgets": {
     "rootMdLines": 10,

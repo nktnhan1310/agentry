@@ -2,7 +2,9 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { actions } from './actions.mjs';
-import { createTicket, listTickets, loadConfig, loadState, readText, saveConfig, saveState, ticketFile } from './store.mjs';
+import { kTok } from './engines.mjs';
+import { formatAnswers, loadQuestions, optionLetter } from './questions.mjs';
+import { createTicket, listTickets, loadConfig, loadState, readText, saveConfig, saveState, ticketFile, updateTicket } from './store.mjs';
 
 const esc = (s = '') => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n)}\n…` : s);
@@ -23,29 +25,65 @@ export async function tg(method, body, token = loadConfig().telegram.token) {
 
 const btn = (text, data) => ({ text, callback_data: data });
 
+const LABEL = { needs_info: 'needs info', review: 'ready for review', approved: 'pushing + opening PR', pr_open: 'PR open', done: 'done' };
+const section = (md, name) => (md.match(new RegExp(`### ${name}\\n([\\s\\S]*?)(?=\\n### |$)`)) || [])[1]?.trim() || '';
+
+// Finished-ticket report: plain-language part for everyone, then the engineer details.
+function report(t) {
+  const out = [];
+  if (t.description) out.push(`<i>${esc(clip(t.description, 300))}</i>`);
+  const notes = readText(t.id, 'notes.md');
+  const summary = readText(t.id, 'summary.md');
+  if (notes) {
+    const part = (h) => (notes.match(new RegExp(`## ${h}\\n([\\s\\S]*?)(?=\\n## |$)`)) || [])[1]?.trim() || '';
+    out.push('', '📋 <b>What changed — for everyone</b>', esc(clip(part('For everyone'), 700)), '', '🛠 <b>For engineers</b>', esc(clip(part('For engineers'), 1000)));
+  } else if (summary) return [...out, '', `<pre>${esc(clip(summary.replace(/^## .*\n/, ''), 2500))}</pre>`];
+  const checks = section(summary, 'Verify').split('\n').filter(Boolean).join(' · ');
+  const files = section(summary, 'Changes').replace(/```/g, '').trim().split('\n').pop().trim();
+  const verdict = (section(summary, 'Review').match(/VERDICT:\s*(\w+)/) || [])[1];
+  out.push('');
+  if (checks) out.push(`✅ Checks: ${esc(clip(checks, 300))}`);
+  if (verdict) out.push(`🔎 Review: ${verdict === 'PASS' ? 'passed' : 'blocking issues left — see diff'}`);
+  if (files) out.push(`📁 ${esc(files)}`);
+  return out;
+}
+
+// One button per option ("✅ 1a · Hold T8…"), selection kept on the ticket (t.picks) until Send.
+function questionRows(t) {
+  const qs = loadQuestions(t.id);
+  if (!qs) return [];
+  const rows = qs.flatMap((x, i) => x.options.map((o, k) => {
+    const on = (t.picks?.[i] ?? x.default) === k;
+    return [btn(`${on ? '✅' : '▫️'} ${i + 1}${optionLetter(k)} · ${o}`.slice(0, 60), `pick:${t.id}:${i}:${k}`)];
+  }));
+  return [...rows, [btn('📨 Send these answers', `send:${t.id}`)]];
+}
+
 export function card(t) {
   const lines = [
-    `${ICON[t.status] || ''} <b>${t.key ? `${esc(t.key)} · ` : ''}${t.id}</b> · ${esc(t.repo)} · <i>${t.status}${t.stage ? ` (${t.stage})` : ''}</i>`,
-    `<b>${esc(t.title)}</b>`,
+    `${ICON[t.status] || ''} <b>${t.key ? `${esc(t.key)} · ` : ''}${t.id}</b> · ${esc(t.repo)} · <i>${LABEL[t.status] || t.status}${t.stage ? ` (${t.stage})` : ''}</i>`,
+    `${t.kind === 'bug' ? `🐞 <i>${esc(t.severity || 'medium')}</i> ` : ''}<b>${esc(t.title)}</b>${t.verifiedAt ? ` · ✔ verified${t.verifiedBy === 'e2e' ? ' by e2e' : ''}` : ''}`,
   ];
-  if (t.status === 'needs_info') lines.push('', esc(clip(readText(t.id, 'questions.md'), 1500)));
-  if (t.status === 'review') {
-    const s = readText(t.id, 'summary.md').replace(/^## .*\n/, '');
-    lines.push('', `<pre>${esc(clip(s, 2500))}</pre>`, `🧪 Test locally: <code>${esc(t.worktree)}</code>`);
-  }
+  if (t.status === 'needs_info') lines.push('', esc(clip(readText(t.id, 'questions.md'), 2500)), ...(loadQuestions(t.id) ? ['', '👇 Tap your choice for each question (✅ = selected, suggested ones are pre-selected), then <b>Send</b>.'] : []));
+  if (t.status === 'backlog' && readText(t.id, 'brief.md')) lines.push('', '📝 <b>Plan ready</b> — press Run to code it', `<pre>${esc(clip(readText(t.id, 'brief.md'), 2500))}</pre>`);
+  if (['review', 'approved', 'pr_open', 'done'].includes(t.status)) lines.push(...report(t));
+  if (t.status === 'review' && t.worktree) lines.push(`🧪 Test locally: <code>${esc(t.worktree)}</code>`);
   if (t.status === 'failed' && t.error) lines.push('', `<pre>${esc(clip(t.error, 1500))}</pre>`);
-  if (t.pr) lines.push(`PR: ${esc(t.pr)}`);
-  if (t.cost?.claudeUsd) lines.push(`Claude ≈ $${t.cost.claudeUsd} · iterations ${t.iterations}`);
+  if (t.pr) lines.push(`🔗 PR: ${esc(t.pr)}${t.autoMerge === 'pending' ? ' (auto-merge on)' : t.autoMerge === 'merged' ? ' (merged)' : ''}`);
+  const tok = Object.values(t.tokens || {}).reduce((n, s) => n + s.in + s.out, 0);
+  if (t.cost?.claudeUsd || tok) lines.push(`💰 Claude ≈ $${t.cost?.claudeUsd || 0}${tok ? ` · 🪙 ${kTok(tok)} tokens` : ''} · iterations ${t.iterations}`);
 
   const k = t.id;
   const rows = {
-    backlog: [[btn('▶ Run', `run:${k}`), btn('🗑 Reject', `reject:${k}`)]],
+    backlog: [[btn('▶ Run', `run:${k}`), btn('📝 Plan only', `plan:${k}`), btn('🗑 Reject', `reject:${k}`)]],
     ready: [[btn('⏹ Stop', `stop:${k}`)]],
     running: [[btn('📜 Log', `log:${k}`), btn('⏹ Stop', `stop:${k}`)]],
-    needs_info: [[btn('💬 Answer', `answer:${k}`), btn('🗑 Reject', `reject:${k}`)]],
+    needs_info: [...questionRows(t), [btn('💬 Type answers', `answer:${k}`), btn('🗑 Reject', `reject:${k}`)]],
     review: [[btn('📄 Diff', `diff:${k}`), btn('✅ Approve → PR', `approve:${k}`)], [btn('🔁 Request changes', `changes:${k}`), btn('🗑 Reject', `reject:${k}`)]],
     failed: [[btn('🔁 Retry', `run:${k}`), btn('📜 Log', `log:${k}`), btn('🗑 Reject', `reject:${k}`)]],
     pr_open: [[...(t.pr ? [{ text: '🔗 Open PR', url: t.pr }] : []), btn('🔁 Changes', `changes:${k}`), btn('✔ Done', `done:${k}`)]],
+    rejected: [[btn('♻️ Reopen', `reopen:${k}`)]],
+    done: t.kind === 'bug' && !t.verifiedAt ? [[btn('✔ Verified', `verify:${k}`), btn('🐞 Still broken', `broken:${k}`)]] : [],
   }[t.status] || [];
   return { text: clip(lines.join('\n'), 4000), reply_markup: { inline_keyboard: rows } };
 }
@@ -83,8 +121,8 @@ async function sendDiff(chat_id, id) {
 }
 
 async function ask(chat_id, id, kind) {
-  const prompt = kind === 'answer' ? `Reply to this message with answers for ${id}` : `Reply to this message with the changes you want for ${id}`;
-  const m = await tg('sendMessage', { chat_id, text: prompt, reply_markup: { force_reply: true, input_field_placeholder: kind === 'answer' ? 'Answers…' : 'What should change…' } });
+  const prompt = kind === 'answer' ? `Reply to this message with answers for ${id}` : kind === 'broken' ? `Reply with what is still broken in ${id} (a new bug ticket is opened)` : `Reply to this message with the changes you want for ${id}`;
+  const m = await tg('sendMessage', { chat_id, text: prompt, reply_markup: { force_reply: true, input_field_placeholder: kind === 'answer' ? 'Answers…' : kind === 'broken' ? 'What still happens…' : 'What should change…' } });
   if (m) { const s = loadState(); s.prompts = { ...(s.prompts || {}), [m.message_id]: { id, kind } }; saveState(s); }
 }
 
@@ -159,13 +197,23 @@ async function onCallback(q) {
   const chat_id = q.message.chat.id;
   const cfg = loadConfig();
   if (!cfg.telegram.allowedChatIds.includes(chat_id)) return;
-  const [act, id] = q.data.split(':');
+  const [act, id, qi, oi] = q.data.split(':');
   let note = '';
+  const redraw = (t) => tg('editMessageReplyMarkup', { chat_id, message_id: q.message.message_id, reply_markup: card(t).reply_markup });
   try {
-    if (act === 'show') await tg('sendMessage', { chat_id, parse_mode: 'HTML', ...card(actions.get(id)) });
+    if (act === 'pick') {
+      const t = updateTicket(id, (x) => { if (x.status !== 'needs_info') throw new Error(`${x.id} is "${x.status}" now`); x.picks = x.picks || []; x.picks[Number(qi)] = Number(oi); });
+      note = `Q${Number(qi) + 1}: ${optionLetter(Number(oi))}`;
+      await redraw(t);
+    } else if (act === 'send') {
+      const qs = loadQuestions(id) || [];
+      const t = actions.answer(id, formatAnswers(qs, actions.get(id).picks || []));
+      note = `${id}: answers sent, re-planning`;
+      await redraw(t);
+    } else if (act === 'show') await tg('sendMessage', { chat_id, parse_mode: 'HTML', ...card(actions.get(id)) });
     else if (act === 'diff') await sendDiff(chat_id, id);
     else if (act === 'log') await tg('sendMessage', { chat_id, parse_mode: 'HTML', text: `<pre>${esc(clip(latestLog(id) || 'no logs', 3500))}</pre>` });
-    else if (act === 'answer' || act === 'changes') await ask(chat_id, id, act);
+    else if (act === 'answer' || act === 'changes' || act === 'broken') await ask(chat_id, id, act);
     else {
       const t = actions[act](id);
       note = `${id}: ${t.status}`;

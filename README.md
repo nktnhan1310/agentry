@@ -98,7 +98,7 @@ Releasing: bump `version` in both `package.json` and `kit.config.json` and add a
 ## Hub: background ticket loop + phone control
 Tickets live locally in `~/.kit-hub` (never in a repo). A daemon works each ticket in its own git worktree and **stops before push/PR**:
 ```
-ticket → worktree kit/T3-slug → setup → plan (Claude opus, or skipped for --quick)
+ticket → worktree kit/PIX-3-slug → setup → plan (Claude opus, or skipped for --quick)
        → code (opencode) ⇄ verify (your test/build cmds, no tokens) ⇄ fix (opencode)
        → review (Claude, diff inlined; skipped under 20 changed lines) → local commit
        → STATUS review → Telegram card [Diff] [Approve → PR] [Request changes] [Reject]
@@ -112,14 +112,21 @@ kit hub ntfy                                # optional one-line push notificatio
 kit hub start                               # background daemon; `kit hub autostart` to start at login
 ```
 Control panel: `kit ui` opens http://127.0.0.1:7878, served by the daemon and starting it if needed. It is local only, and changes require the `x-kit-ui` header.
-- **Board**: the workflow strip (which engine/model runs each step) and tickets by column. **Ticket**: live stage, plan (editable before coding), questions, summary/review, colored diff, per-stage logs, history, plus Approve / Request changes / Re-plan / Retry / Stop / Reject.
-- **Repos**: loop settings (base/setup/verify); Preview sync / Sync / Doctor; every installed agent/command/skill/pack/hook with ok/modified/missing status; one-click **override** into `.kit/local/`; edit the wiki and AGENTS.md.
-- **Kit**: browse and edit kit sources with line budgets; saving runs lint. **Settings**: engines/models, limits, PR draft, ntfy. Pause/resume the loop from the header.
+- **Board**: counters, the workflow strip (which engine/model runs each step) and tickets by column with their PR links. **Ticket**: live stage, plan (editable before coding), questions, the finished-ticket report, colored diff, per-stage logs, history, plus Approve / Request changes / Re-plan / Retry / Stop / Reject.
+- **Pull requests**: every PR of each hub repo on GitHub (via `gh`, hub-made or not), filtered by open/merged/closed, linked to its ticket.
+- **Repos**: the repo's tickets with Start / Stop / Start all backlog; **Autopilot** per repo: pause, auto-run backlog (when nothing of the repo is in flight, queue its oldest backlog ticket, so the next starts after the previous is merged or rejected; a failed or needs-info ticket holds the line), auto-approve (push + PR once verify and review pass), auto-merge (squash/merge/rebase; uses GitHub auto-merge when enabled, else merges at once; a PR that conflicts with its base gets the base merged in, conflicts resolved by `engines.resolve` (claude · opus by default, `off` to disable), verify re-run, then pushed and merged; one try per base/head pair); loop settings (base/setup/verify); Preview sync / Sync / Doctor; every installed agent/command/skill/pack/hook with ok/modified/missing status; one-click **override** into `.kit/local/`; edit the wiki and AGENTS.md.
+- **Kit**: browse and edit kit sources with line budgets; saving runs lint. **Settings**: light/dark/system theme, engines/models, limits, PR draft, ntfy. Pause/resume the loop from the header; press `N` for a new ticket.
+
+When a ticket finishes, a cheap Claude call (`engines.summary`, haiku by default, `off` to disable) writes a two-part report: **For everyone** (plain language) and **For engineers** (key changes, risks, how to test). It goes into the Telegram card, the Result tab and the PR description.
+
+**Bugs**: **New ticket → Bug** in the UI (`B` opens it in bug mode), or `kit hub bug <repo> "<title>" --img shot.png --severity high`. A bug is a ticket with `kind: bug`: same loop, but the Opus planner reads the screenshots first, must name the root cause (`path:line`) and put a failing regression test first, and writes what the screenshots show in words (the coder never sees images). Its status reads Open → Fixing → Fix ready → Fix in PR → Fixed → **Verified** (or Needs info / Fix failed / Won't fix); the board filters Features / Bugs. On a fixed bug, **Verified** confirms it and **Still broken…** opens a new linked bug with the same screenshots (`kit hub verify|broken <id>`, or the Telegram buttons). Screenshots are resized in the browser to ≤1568px (≈1.8k tokens each, ~1 token per 28×28 px) and only the plan step sees them.
+
+**E2E tests (Playwright, no tokens)**: Repos → *End-to-end tests* → **Run now**, `kit hub e2e <repo>`, or every N hours (`e2e.everyHours`). It runs the suite on a clean checkout of the latest base in its own worktree (`CI=1`, so `webServer` starts the app and retries separate flaky tests), then turns each failing test into a bug ticket with its error text and failure screenshot. Reruns add "still failing" to the open bug instead of filing a duplicate; more than `maxBugs` failures (default 5) become one grouped bug, since they usually share a cause. When a fixed bug's test passes again, the bug is marked Verified. Filed bugs wait in the backlog unless *Start fixing right away* is on. *Also run in each ticket's Verify step* adds the suite to verify with the terse `line` reporter, so a failure costs the coder only text. Auto-detected from `playwright.config.*`; set `use: { screenshot: 'only-on-failure' }` there.
 
 Start a ticket from anywhere (all go to the same queue):
 - Claude Code / OpenCode session in the repo: `/ticket <request>`. The agent drafts the title and description from the conversation, then queues it (unregistered repos are added automatically). Installed by `kit install-global`.
-- Phone: `/new <repo> <title>` (next lines = description), `/quick …`, `/list`, `/t T3`, `/status`, `/pause`.
-- Terminal: `kit hub add <repo|path> "<title>" [--quick]`, `kit hub ls`, `kit hub show T3`, `kit hub approve T3`.
+- Phone: `/new <repo> <title>` (next lines = description), `/quick …`, `/list`, `/t PIX-3`, `/status`, `/pause`.
+- Terminal: `kit hub add <repo|path> "<title>" [--quick]`, `kit hub ls`, `kit hub show PIX-3`, `kit hub approve PIX-3`.
 
 Models: `kit hub config engines.plan.model opus|sonnet` (also `engines.review.model`, `engines.code.model`, e.g. `opencode/big-pickle`).
 Test a ticket locally before approving: the card shows its worktree path.

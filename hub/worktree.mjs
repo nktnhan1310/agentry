@@ -15,7 +15,7 @@ export class Stop extends Error {
 
 export async function ensureWorktree(t, repo) {
   if (t.worktree && existsSync(t.worktree)) return;
-  const wt = repo.worktree ? resolve(fill(repo.worktree, vars(t, repo))) : join(paths.worktrees, t.repo, t.id);
+  const wt = repo.worktree ? resolve(fill(repo.worktree, vars(t, repo))) : join(loadConfig().worktreeDir || paths.worktrees, t.repo, t.id);
   if (existsSync(wt) && readdirSync(wt).length) throw new Stop('failed', `${wt} already exists; remove it or change the repo's worktree pattern`);
   mkdirSync(join(wt, '..'), { recursive: true });
   const base = repo.base || 'main';
@@ -24,6 +24,11 @@ export async function ensureWorktree(t, repo) {
     const f = await git(repo.path, ['fetch', '--quiet', 'origin', base], { log: logFile(t, 'git') });
     if (f.code) throw new Stop('failed', `git fetch origin ${base} failed:\n${tailN(f.tail, 10)}`);
     start = `origin/${base}`;
+  } else if ((await git(repo.path, ['remote', 'get-url', 'origin'])).code === 0) {
+    // Branch from the remote base when there is one: the local one is often behind (e.g. PRs merged on GitHub, never pulled).
+    const f = await git(repo.path, ['fetch', '--quiet', 'origin', base], { log: logFile(t, 'git') });
+    if (f.code === 0) start = `origin/${base}`;
+    else event(t, `fetch origin ${base} failed; branching from local ${base}`);
   }
   const head = await git(repo.path, ['rev-parse', '--verify', '--quiet', `${start}^{commit}`]);
   if (head.code) throw new Stop('failed', `base "${start}" not found in ${repo.path}`);
@@ -40,7 +45,7 @@ export async function ensureWorktree(t, repo) {
   const cur = existsSync(exclude) ? readFileSync(exclude, 'utf8') : '';
   if (!cur.includes('.kit/handoff/')) { mkdirSync(join(exclude, '..'), { recursive: true }); appendFileSync(exclude, `${cur && !cur.endsWith('\n') ? '\n' : ''}.kit/handoff/\n`); }
   t.worktree = wt.replaceAll('\\', '/');
-  t.baseSha = t.baseSha || head.out.trim();
+  if (!exists || !t.baseSha) t.baseSha = head.out.trim(); // a new branch always starts at today's base
   t.setupDone = false;
   event(t, `worktree ${t.worktree} on ${t.branch} from ${start}`);
   saveTicket(t);

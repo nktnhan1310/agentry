@@ -18,7 +18,7 @@ export function cancel(ticketId) {
 const stripAnsi = (s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '');
 
 /**
- * run(cmd, args, { cwd, shell, log, timeoutMin, ticketId, input })
+ * run(cmd, args, { cwd, shell, log, logLine, timeoutMin, ticketId, input })
  * → { code, out (full stdout), tail (last lines of stdout+stderr), timedOut }
  */
 export function run(cmd, args = [], opts = {}) {
@@ -39,10 +39,18 @@ export function run(cmd, args = [], opts = {}) {
     }
     if (opts.input) { child.stdin.write(opts.input); child.stdin.end(); }
     let out = '';
+    let partial = '';
     const lines = [];
     const take = (isOut) => (buf) => {
-      const s = buf.toString();
+      let s = buf.toString();
       if (isOut) out += s;
+      // logLine(line) → readable text for the log/tail (stdout only, line-buffered), e.g. stream-json events.
+      if (isOut && opts.logLine) {
+        const parts = (partial + s).split(/\r?\n/);
+        partial = parts.pop();
+        s = parts.map((l) => (l.trim() ? opts.logLine(l) || '' : '')).join('');
+        if (!s) return;
+      }
       log?.write(s);
       for (const l of stripAnsi(s).split(/\r?\n/)) if (l.trim()) lines.push(l);
       if (lines.length > 500) lines.splice(0, lines.length - 500);

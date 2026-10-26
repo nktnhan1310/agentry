@@ -14,7 +14,8 @@ process.env.FAKE_CLAUDE_LOG = join(tmp, 'claude.log');
 process.env.FAKE_VERDICTS = join(tmp, 'verdicts.txt');
 for (const k of ['AUTHOR', 'COMMITTER']) { process.env[`GIT_${k}_NAME`] = 'Test'; process.env[`GIT_${k}_EMAIL`] = 'test@example.test'; }
 
-const { createTicket, fill, getTicket, loadConfig, readText, saveConfig, ticketFile, updateTicket } = await import('../hub/store.mjs');
+const { createTicket, fill, getTicket, listTickets, loadConfig, readText, saveConfig, ticketFile, updateTicket } = await import('../hub/store.mjs');
+const byKey = (k) => listTickets().find((x) => x.key === k); // ids are per repo (APP-1 …); tracker keys are stable
 const { cleanup, runPipeline } = await import('../hub/pipeline.mjs');
 const { actions } = await import('../hub/actions.mjs');
 const { importCreate, importList, notifyTickets } = await import('../hub/stages.mjs');
@@ -90,7 +91,9 @@ test('workspace ticket: worktree pattern, stage agents, wiki, test fail → fix 
   assert.match(readText(t.id, 'summary.md'), /### Tests[\s\S]*VERDICT: PASS/);
   assert.ok(existsSync(ticketFile(t.id, 'evidence/shot.png')) && existsSync(ticketFile(t.id, 'evidence/result.txt')));
 
-  const c = calls();
+  // 'other' = the finished-ticket report (engines.summary): no stage agent, runs in the worktree.
+  const c = calls().filter((x) => x.kind !== 'other');
+  assert.equal(calls().length - c.length, 1);
   assert.deepEqual(c.map((x) => x.kind), ['plan', 'code', 'review', 'test', 'code', 'review', 'test']);
   const agentOf = (x) => x.args[x.args.indexOf('--agent') + 1];
   assert.deepEqual(c.slice(0, 4).map(agentOf), ['pl', 'impl', 'rev', 'tr'], 'ticket agent beats repo agent');
@@ -131,7 +134,7 @@ test('publish failure resumes at publish without recoding; in-flight origin bran
 test('notify groups by command: one run per group with all keys', async () => {
   const o = createTicket({ repo: 'other', title: 'Other', key: 'OTH-1' });
   updateTicket(o.id, (x) => { x.status = 'pr_open'; x.pr = 'https://example.test/pr/OTH-1'; });
-  const [a, b] = ['ABC-12', 'ABC-13'].map((k) => getTicket(`T${['ABC-12', 'ABC-13'].indexOf(k) + 1}`));
+  const [a, b] = ['ABC-12', 'ABC-13'].map(byKey);
   assert.deepEqual([a.key, b.key], ['ABC-12', 'ABC-13']);
   const r = await notifyTickets([a.id, b.id, o.id, a.id]);
   assert.ok(r.ok, r.text);
@@ -154,7 +157,7 @@ test('import: lists with manual/existing flags, creates only pickable keys, keep
   saveConfig(c);
   const list = await importList();
   assert.deepEqual(list.map((e) => [e.key, e.manual, e.existing]), [
-    ['NEW-1', '', ''], ['MULTI-1', 'multi-repo', ''], ['A;B', 'invalid key', ''], ['ABC-12', '', 'T1'], ['GONE-1', 'repo "nope" is not registered', ''],
+    ['NEW-1', '', ''], ['MULTI-1', 'multi-repo', ''], ['A;B', 'invalid key', ''], ['ABC-12', '', byKey('ABC-12').id], ['GONE-1', 'repo "nope" is not registered', ''],
   ]);
   const r = importCreate(['NEW-1', 'MULTI-1', 'ABC-12', 'ZZZ-9'], { backlog: true });
   assert.equal(r.created.length, 1);
@@ -165,7 +168,7 @@ test('import: lists with manual/existing flags, creates only pickable keys, keep
 });
 
 test('cleanup: a failing cleanup command keeps the worktree', async () => {
-  const t = getTicket('T2');
+  const t = byKey('ABC-13');
   process.env.FAIL_CLEANUP = '1';
   await cleanup(t.id);
   assert.ok(existsSync(t.worktree));
