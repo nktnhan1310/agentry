@@ -391,9 +391,29 @@ const prNum = (url) => ((url || '').match(/\/pull\/(\d+)/) || [])[1];
 async function api(method, path, body) {
   const res = await fetch(`/api/${path}`, { method, headers: method === 'GET' ? {} : { 'content-type': 'application/json', 'x-kit-ui': '1' }, body: body === undefined ? undefined : JSON.stringify(body) });
   const j = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+  if (res.status === 401 && j.pair) showPair();
   if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
   return j;
 }
+
+// Remote viewers (phone via Tailscale) pair once with a code created on the PC; the server then sets a device cookie.
+let PAIRING = false;
+const deviceName = () => (/Android/i.test(navigator.userAgent) ? 'Android phone' : /iPhone|iPad/i.test(navigator.userAgent) ? 'iPhone' : 'Browser');
+function showPair() {
+  if (PAIRING) return;
+  PAIRING = true;
+  $('#view').innerHTML = `<div class="panel" style="max-width:420px;margin:32px auto">
+    <h2 style="margin-top:0">Pair this device</h2>
+    <p class="small muted">On the PC, open <b>Settings → Phone access → Pair a phone</b> (or run <code>kit hub phone pair</code>), then type the code here.</p>
+    <label>Pairing code</label><input id="pairCode" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" style="font-size:20px;letter-spacing:2px">
+    <label style="margin-top:12px">Device name</label><input id="pairName" value="${esc(deviceName())}">
+    <div class="row" style="margin-top:18px"><button class="primary" onclick="doPair()">Pair</button></div></div>`;
+  $('#pairCode').focus();
+}
+const doPair = guard(async () => {
+  await api('POST', 'pair', { code: $('#pairCode').value, name: $('#pairName').value });
+  location.reload();
+});
 function toast(msg, isErr) {
   const d = document.createElement('div'); d.textContent = msg; if (isErr) d.className = 'e';
   $('#toast').append(d); setTimeout(() => d.remove(), isErr ? 7000 : 3000);
@@ -1307,8 +1327,25 @@ function viewSettings() {
     <h3>Import &amp; notify</h3><div class="grid2">
       <div><label>Import command <span class="faint" style="font-weight:400">(prints a JSON list of tickets)</span></label><input id="impCmd" value="${esc(c.import.command)}" placeholder="off"></div>
       <div><label>Notify button label</label><input id="notifyLabel" value="${esc(c.ui.notifyLabel || '')}" placeholder="Notify"></div></div>
+    <h3>Phone access</h3>
+    <p class="small muted" style="margin-top:0">${(c.ui.remoteHosts || []).length ? `Open ${c.ui.remoteHosts.map((h) => `<code>https://${esc(h)}</code>`).join(' or ')} on a phone in your Tailscale network.` : 'Off: run <code>kit hub phone</code> on the PC (needs Tailscale).'}</p>
+    ${S.viewer?.remote ? '' : '<div class="row"><button type="button" onclick="pairPhone()">Pair a phone</button><span id="pairOut" class="small"></span></div>'}
+    <div id="devList" style="margin-top:10px">${deviceRows(c.devices || [])}</div>
     <div class="row" style="margin-top:22px"><button class="primary" onclick="saveSettings()">Save settings</button></div></div>`;
 }
+const deviceRows = (ds) => (ds.length ? `<div class="tablewrap"><table>${ds.map((d) => `<tr><td>${esc(d.name)}${S.viewer?.device?.id === d.id ? ' <span class="faint">(this device)</span>' : ''}</td>
+  <td class="small muted">paired ${esc(d.createdAt.slice(0, 10))} · seen ${dur(d.lastSeenAt)} ago</td>
+  <td style="text-align:right"><button type="button" class="small ghost" onclick="revokeDevice('${esc(d.id)}')">Revoke</button></td></tr>`).join('')}</table></div>` : '<p class="small faint">No paired devices.</p>');
+const pairPhone = guard(async () => {
+  const p = await api('POST', 'devices/pair');
+  $('#pairOut').innerHTML = `Code <b style="font-size:20px;letter-spacing:2px">${esc(p.code)}</b> · one use, valid ${p.expiresMin} min`;
+});
+const revokeDevice = guard(async (id) => {
+  if (!confirm('Revoke this device? It will need a new pairing code.')) return;
+  await api('DELETE', `devices/${encodeURIComponent(id)}`);
+  S.config.devices = (await api('GET', 'devices')).devices;
+  $('#devList').innerHTML = deviceRows(S.config.devices);
+});
 const saveSettings = guard(async () => {
   const e = (k) => ({ tool: $(`#e_${k}_tool`).value, model: $(`#e_${k}_model`).value.trim(), ...($(`#e_${k}_agent`) ? { agent: $(`#e_${k}_agent`).value.trim() } : {}) });
   const n = (sec, k) => Number($(`#n_${sec}_${k}`).value);
@@ -1353,6 +1390,7 @@ const typing = () => ['TEXTAREA', 'INPUT', 'SELECT'].includes(document.activeEle
 
 // Live updates without stealing focus from editors.
 async function poll() {
+  if (PAIRING) return;
   try {
     const before = JSON.stringify(S.tickets);
     await refresh();
@@ -1369,6 +1407,7 @@ async function poll() {
   } catch { $('#loop').innerHTML = '<span class="row" style="gap:7px"><span class="dot"></span><span class="txt">Daemon unreachable</span></span>'; }
 }
 async function pollPrs() {
+  if (PAIRING) return;
   try {
     const hadOpen = P && P.prs.filter((p) => p.state === 'OPEN').length;
     await loadPrs();
@@ -1383,7 +1422,7 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === '[' || e.key === ']') { e.preventDefault(); gotoNeighbour(e.key === '[' ? -1 : 1); }
 });
 window.addEventListener('hashchange', render);
-refresh().then(render).then(pollPrs);
+refresh().then(render).then(pollPrs).catch(() => { /* not paired: the pairing card is shown */ });
 setInterval(poll, 3000);
 setInterval(pollPrs, 60000);
 </script>

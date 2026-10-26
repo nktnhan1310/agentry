@@ -1,5 +1,6 @@
 // Local control panel (http://127.0.0.1:<ui.port>): tickets, plans, diffs, logs, repos, kit sources, settings.
-// Served by the daemon. No deps; localhost only; mutations need the x-kit-ui header (blocks cross-site requests).
+// Served by the daemon. No deps; listens on localhost; mutations need the x-kit-ui header (blocks cross-site requests).
+// Remote access (ui.remoteHosts via a proxy such as `tailscale serve`) needs a paired device: see remote.mjs.
 import { cpSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { basename, join, relative, resolve } from 'node:path';
@@ -15,6 +16,7 @@ import { notify } from './notify.mjs';
 import { repoCommands } from './pipeline.mjs';
 import { generate, generateJob, planFiles } from './plans.mjs';
 import { run } from './proc.mjs';
+import { deviceCookie, deviceFor, hostAllowed, isLocal, listDevices, newPairCode, pair, revoke } from './remote.mjs';
 import { importCreate, importList, notifyTickets } from './stages.mjs';
 import { applyAdvanced, MEDIA, ticketDetail, ticketSummary } from './views.mjs';
 import { createTicket, event, getTicket, SEVERITIES, listTickets, loadConfig, loadState, normId, readText, saveConfig, saveState, ticketFile, updateTicket, writeText } from './store.mjs';
@@ -35,7 +37,7 @@ function inside(root, rel) {
 }
 
 function publicConfig(cfg) {
-  return { ...cfg, telegram: { paired: cfg.telegram.allowedChatIds.length, enabled: !!cfg.telegram.token } };
+  return { ...cfg, telegram: { paired: cfg.telegram.allowedChatIds.length, enabled: !!cfg.telegram.token }, devices: listDevices() };
 }
 
 // ---- kit catalog ---------------------------------------------------------------------------------
@@ -160,12 +162,22 @@ async function body(req, max = 2e6) {
   return s ? JSON.parse(s) : {};
 }
 
-async function route(req, url) {
+async function route(req, url, viewer) {
   const parts = url.pathname.split('/').filter(Boolean).slice(1).map(decodeURIComponent); // drop "api"
   const [a, b, c, d] = parts;
   const m = req.method;
   const q = url.searchParams;
   const B = m === 'GET' ? {} : await body(req, a === 'tickets' && (!b || c === 'attachments') ? 40e6 : undefined);
+
+  // Phone access: pairing codes are created on the PC only; any signed-in viewer can list/revoke devices.
+  if (a === 'devices') {
+    if (!b && m === 'GET') return { devices: listDevices(), remoteHosts: loadConfig().ui.remoteHosts || [] };
+    if (b === 'pair' && m === 'POST') {
+      if (viewer.remote) throw new HttpError(403, 'create pairing codes on the PC');
+      return newPairCode();
+    }
+    if (b && m === 'DELETE') return revoke(b);
+  }
 
   if (a === 'state' && m === 'GET') {
     const cfg = loadConfig();
@@ -173,7 +185,7 @@ async function route(req, url) {
     const paused = !!loadState().paused;
     const all = listTickets();
     const wait = { ...(paused ? {} : autoRun(all, cfg).wait), ...schedule(all, cfg, paused).wait };
-    return { daemon: { pid: daemonPid() || process.pid, paused }, config: publicConfig(cfg), kitVersion: loadKitConfig().version,
+    return { daemon: { pid: daemonPid() || process.pid, paused }, config: publicConfig(cfg), kitVersion: loadKitConfig().version, viewer,
       repos: Object.entries(cfg.repos).map(([n, r]) => ({ name: n, path: r.path, base: r.base, paused: !!r.paused, autoRun: !!r.autoRun, autoApprove: !!r.autoApprove, autoMerge: !!r.autoMerge,
         flags: { test: !!r.test, evidence: !!r.commands?.evidence, publish: !!r.commands?.publish, notify: !!r.commands?.notify } })),
       tickets: all.map((t) => ({ ...ticketSummary(t), waiting: wait[t.id] || '' })) };
@@ -304,6 +316,8 @@ async function route(req, url) {
     const cfg = loadConfig();
     if (m === 'GET') return publicConfig(cfg);
     if (m === 'PUT') {
+      // Where and how the UI listens is set on the PC only, so a phone cannot widen access (the notify label is just text).
+      if (B.ui && viewer.remote && Object.keys(B.ui).some((k) => k !== 'notifyLabel')) throw new HttpError(403, 'UI access settings can only be changed on the PC');
       for (const k of ['engines', 'limits', 'review', 'pr', 'ntfy', 'ui', 'import']) if (B[k]) cfg[k] = { ...cfg[k], ...B[k] };
       if (typeof B.worktreeDir === 'string') cfg.worktreeDir = B.worktreeDir.trim().replace(/\\/g, '/'); // new worktrees only
       saveConfig(cfg);
@@ -315,17 +329,26 @@ async function route(req, url) {
 
 export function startUi(log = console.log) {
   const { host, port } = loadConfig().ui;
-  const okHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
   const server = createServer(async (req, res) => {
-    const send = (code, data, type = 'application/json') => {
-      res.writeHead(code, { 'content-type': `${type}; charset=utf-8`, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+    const send = (code, data, type = 'application/json', extra = {}) => {
+      res.writeHead(code, { 'content-type': `${type}; charset=utf-8`, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', ...extra });
       res.end(type === 'application/json' ? JSON.stringify(data) : data);
     };
     try {
-      if (!okHosts.has(req.headers.host)) return send(403, { error: 'bad host' }); // DNS-rebinding guard
+      if (!hostAllowed(req, loadConfig())) return send(403, { error: 'bad host' }); // DNS-rebinding guard
       const url = new URL(req.url, `http://${req.headers.host}`);
+      const remote = !isLocal(req, port);
+      const device = remote ? deviceFor(req) : null;
+      const viewer = { remote, device: device ? { id: device.id, name: device.name } : null };
       if (url.pathname === '/' || url.pathname === '/index.html') return send(200, readFileSync(UI, 'utf8'), 'text/html');
       if (!url.pathname.startsWith('/api/')) return send(404, { error: 'not found' });
+      if (url.pathname === '/api/pair' && req.method === 'POST') {
+        if (req.headers['x-kit-ui'] !== '1') return send(403, { error: 'missing x-kit-ui header' });
+        const B = await body(req);
+        const r = pair(B.code, B.name);
+        return send(200, { device: r.device }, 'application/json', { 'set-cookie': deviceCookie(r.token, req.headers['x-forwarded-proto'] === 'https') });
+      }
+      if (remote && !device) return send(401, { error: 'this device is not paired', pair: true });
       const img = /^\/api\/tickets\/([^/]+)\/attachments\/([^/]+)$/.exec(url.pathname);
       if (img && req.method === 'GET') {
         const id = normId(decodeURIComponent(img[1]));
@@ -335,7 +358,7 @@ export function startUi(log = console.log) {
         return res.end(readFileSync(attachmentPath(id, name)));
       }
       if (req.method !== 'GET' && req.headers['x-kit-ui'] !== '1') return send(403, { error: 'missing x-kit-ui header' });
-      const out = await route(req, url);
+      const out = await route(req, url, viewer);
       if (!(out instanceof Raw)) return send(200, out);
       // Evidence files: sandboxed (no script runs even if a file is mislabelled), unknown types download.
       res.writeHead(200, { 'content-type': out.type, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox',

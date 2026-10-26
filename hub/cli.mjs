@@ -11,6 +11,7 @@ import { createWithImages, fromFile } from './attachments.mjs';
 import { daemonPid, serve } from './daemon.mjs';
 import { e2eLog, runE2e } from './e2e.mjs';
 import { repoCommands } from './pipeline.mjs';
+import { listDevices, newPairCode, revoke } from './remote.mjs';
 import { getTicket, listTickets, loadConfig, normId, paths, PREFIX_RE, readText, repoPrefix, saveConfig } from './store.mjs';
 import { uiUrl } from './server.mjs';
 import { tg } from './telegram.mjs';
@@ -19,6 +20,8 @@ const HELP = `kit hub — local ticket loop (plan → code → verify → review
 
   setup     init · repo add <path> [--name n] [--base main] [--prefix PIX] [--setup "cmd"] [--verify "a && b" | none] · repo ls · repo rm <name>
             telegram <bot-token> · ntfy [topic] · autostart · config [key] [value]  (e.g. engines.plan.model sonnet)
+  phone     phone [--host h] [--no-serve]  (control panel on your phone via Tailscale + a pairing code)
+            phone pair · phone devices · phone revoke <id> · phone off
   daemon    start · down · status · serve (foreground) · logs [n] · ui (open the control panel; starts the daemon)
   tickets   add <repo|path> "<title>" [--desc "…" | --desc-file f] [--key KEY-1] [--url u] [--quick] [--backlog] · ls [--status s] [--repo r] · show <id>
             bug <repo|path> "<title>" [--desc …] [--img a.png,b.png] [--severity low|medium|high|critical] [--key KEY-1] [--url u] [--backlog]
@@ -33,6 +36,22 @@ function defaultBase(path) {
   const r = spawnSync('git', ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], { cwd: path, encoding: 'utf8' });
   if (r.status === 0) return r.stdout.trim().replace(/^origin\//, '');
   return spawnSync('git', ['branch', '--show-current'], { cwd: path, encoding: 'utf8' }).stdout.trim() || 'main';
+}
+
+// Tailscale's CLI: on PATH, or the default Windows install folder.
+function tailscale(args) {
+  const exe = process.platform === 'win32' && spawnSync('where', ['tailscale'], { stdio: 'ignore' }).status !== 0
+    ? join(process.env.ProgramFiles || 'C:/Program Files', 'Tailscale', 'tailscale.exe') : 'tailscale';
+  const r = spawnSync(exe, args, { encoding: 'utf8', windowsHide: true });
+  return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || r.error?.message || '').trim() };
+}
+
+function tailscaleHost() {
+  const r = tailscale(['status', '--json']);
+  if (!r.ok) throw new Error(`tailscale not available (${r.err || 'not running'}): install it, sign in, or pass --host <name>`);
+  const name = (JSON.parse(r.out).Self?.DNSName || '').replace(/\.$/, '');
+  if (!name) throw new Error('tailscale has no MagicDNS name: turn on MagicDNS in the admin console, or pass --host <name>');
+  return name;
 }
 
 const fmt = (t) => `${t.id.padEnd(7)} ${t.status.padEnd(10)} ${t.repo.padEnd(18).slice(0, 18)} ${t.mode === 'quick' ? '⚡' : ' '} ${t.key ? `${t.key} · ` : ''}${t.title}`;
@@ -185,6 +204,35 @@ export async function hub([cmd = 'help', ...pos], flags) {
       const startup = join(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'agentry-hub.vbs');
       writeFileSync(startup, `CreateObject("WScript.Shell").Run """${process.execPath}"" ""${join(KIT, 'bin', 'kit.mjs')}"" hub start", 0, False\r\n`);
       return `autostart installed: ${startup}`;
+    }
+    case 'phone': {
+      const sub = pos[0] || 'setup';
+      const pairText = () => {
+        const p = newPairCode();
+        const urls = (loadConfig().ui.remoteHosts || []).map((h) => `https://${h}`).join(' or ');
+        return `pairing code: ${p.code}  (one use, ${p.expiresMin} min)\nOn your phone (Tailscale on): open ${urls || 'the remote URL'} and enter the code.${daemonPid() ? '' : '\nThe daemon is not running: kit hub start'}`;
+      };
+      if (sub === 'pair') return pairText();
+      if (sub === 'devices') return listDevices().map((d) => `${d.id}  ${d.name.padEnd(20)} paired ${d.createdAt.slice(0, 10)} · last seen ${d.lastSeenAt.slice(0, 16).replace('T', ' ')}`).join('\n') || 'no paired devices';
+      if (sub === 'revoke') { if (!pos[1]) throw new Error('usage: kit hub phone revoke <id>'); revoke(pos[1]); return `revoked ${pos[1]}`; }
+      if (sub === 'off') {
+        const hosts = cfg.ui.remoteHosts || [];
+        cfg.ui.remoteHosts = [];
+        saveConfig(cfg);
+        const r = flags['no-serve'] ? { ok: true } : tailscale(['serve', '--https=443', 'off']);
+        return `remote access off (${hosts.join(', ') || 'no hosts'}); paired devices kept (kit hub phone revoke <id>)${r.ok ? '' : `\ntailscale serve: ${r.err}`}`;
+      }
+      if (sub !== 'setup') throw new Error('usage: kit hub phone [pair|devices|revoke <id>|off]');
+      const host = String(flags.host || tailscaleHost()).toLowerCase();
+      cfg.ui.remoteHosts = [...new Set([...(cfg.ui.remoteHosts || []), host])];
+      saveConfig(cfg);
+      const lines = [`remote host: https://${host}`];
+      if (!flags['no-serve']) {
+        // HTTPS on the tailnet name, proxied to the daemon on localhost; persists across reboots.
+        const r = tailscale(['serve', '--bg', String(cfg.ui.port)]);
+        lines.push(r.ok ? `tailscale serve: https://${host} → 127.0.0.1:${cfg.ui.port}` : `tailscale serve failed: ${r.err}\nrun it yourself: tailscale serve --bg ${cfg.ui.port}`);
+      }
+      return `${lines.join('\n')}\n${pairText()}`;
     }
     default: return HELP;
   }

@@ -41,7 +41,10 @@ export const DEFAULT_CONFIG = {
   import: { command: '' },
   telegram: { token: '', allowedChatIds: [], pairCode: '' },
   ntfy: { server: 'https://ntfy.sh', topic: '' },
-  ui: { host: '127.0.0.1', port: 7878, notifyLabel: 'Notify' },
+  // remoteHosts: extra Host names the UI answers on (e.g. a `tailscale serve` name); those require a paired device.
+  ui: { host: '127.0.0.1', port: 7878, remoteHosts: [], notifyLabel: 'Notify' },
+  // Paired phones/browsers for remote access: { id, name, hash (sha256 of the token), createdAt, lastSeenAt }.
+  devices: [],
 };
 
 export const STATUSES = ['backlog', 'ready', 'running', 'needs_info', 'review', 'approved', 'pr_open', 'failed', 'rejected', 'done'];

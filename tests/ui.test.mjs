@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
+import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -108,4 +109,65 @@ test('control panel API: state, guards, tickets, kit catalog', async (t) => {
   const e = (await (await put('repos/web', { e2e: { cmd: ' npx playwright test ', dir: 'apps\\web', everyHours: -3, severity: 'nope', inVerify: true } })).json()).e2e;
   assert.deepEqual([e.enabled, e.cmd, e.dir, e.everyHours, e.severity, e.inVerify, e.fileBugs, e.maxBugs], [true, 'npx playwright test', 'apps/web', 0, 'high', true, true, 5]);
   assert.equal((await (await fetch(`${B}/api/repos/web/e2e`)).json()).last, null);
+});
+
+test('phone access: remote hosts need a paired device; codes are one-use, local-only, limited', async (t) => {
+  const c = loadConfig();
+  c.ui.port = port + 1;
+  c.ui.remoteHosts = ['pc.tail.ts.net'];
+  saveConfig(c);
+  const server = startUi(() => {});
+  t.after(() => server.close());
+  await new Promise((r) => (server.listening ? r() : server.once('listening', r)));
+  // node:http so the Host and proxy headers can be set the way `tailscale serve` sends them.
+  const req = (method, path, { host = 'pc.tail.ts.net', proxied = true, cookie, body } = {}) => new Promise((resolve, reject) => {
+    const headers = { host, ...(proxied ? { 'x-forwarded-for': '100.65.180.95', 'x-forwarded-proto': 'https' } : {}), ...(cookie ? { cookie } : {}),
+      ...(method === 'GET' ? {} : { 'content-type': 'application/json', 'x-kit-ui': '1' }) };
+    const r = request({ host: '127.0.0.1', port: port + 1, method, path, headers }, (res) => {
+      let s = '';
+      res.on('data', (d) => (s += d));
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, json: s.startsWith('{') || s.startsWith('[') ? JSON.parse(s) : null, text: s }));
+    });
+    r.on('error', reject);
+    r.end(body === undefined ? undefined : JSON.stringify(body));
+  });
+  const local = { host: `127.0.0.1:${port + 1}`, proxied: false };
+
+  assert.equal((await req('GET', '/api/state', { host: 'evil.example', proxied: false })).status, 403); // DNS rebinding
+  assert.equal((await req('GET', '/')).status, 200); // the shell loads so it can show the pairing card
+  const denied = await req('GET', '/api/state');
+  assert.deepEqual([denied.status, denied.json.pair], [401, true]);
+  assert.equal((await req('GET', '/api/tickets/X-1/attachments/img-1.png')).status, 401);
+  assert.equal((await req('GET', '/api/state', { host: `127.0.0.1:${port + 1}` })).status, 401); // localhost Host but proxied
+
+  assert.equal((await req('POST', '/api/devices/pair', {})).status, 401);
+  assert.match((await req('POST', '/api/pair', { body: { code: 'AAAA-AAAA' } })).json.error, /no pairing code/);
+
+  // Five wrong tries burn the code.
+  let code = (await req('POST', '/api/devices/pair', local)).json.code;
+  assert.match(code, /^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+  for (let i = 0; i < 4; i++) assert.equal((await req('POST', '/api/pair', { body: { code: 'ZZZZ-ZZZZ' } })).json.error, 'wrong code');
+  assert.match((await req('POST', '/api/pair', { body: { code: 'ZZZZ-ZZZZ' } })).json.error, /too many/);
+  assert.match((await req('POST', '/api/pair', { body: { code } })).json.error, /no pairing code/);
+
+  code = (await req('POST', '/api/devices/pair', local)).json.code;
+  const paired = await req('POST', '/api/pair', { body: { code: code.toLowerCase().replace('-', ' '), name: 'Android phone' } });
+  assert.equal(paired.status, 200);
+  const setCookie = paired.headers['set-cookie'][0];
+  assert.match(setCookie, /^kit_device=[\w-]{43};.*HttpOnly.*SameSite=Strict.*Secure/);
+  const cookie = setCookie.split(';')[0];
+  assert.match((await req('POST', '/api/pair', { body: { code } })).json.error, /no pairing code/); // one use
+
+  const s = await req('GET', '/api/state', { cookie });
+  assert.equal(s.status, 200);
+  assert.deepEqual(s.json.viewer, { remote: true, device: { id: paired.json.device.id, name: 'Android phone' } });
+  assert.ok(s.json.config.devices.every((d) => !('hash' in d))); // token hashes never leave the server
+  assert.equal((await req('POST', '/api/devices/pair', { cookie, body: {} })).status, 403); // codes only on the PC
+  assert.equal((await req('PUT', '/api/config', { cookie, body: { ui: { remoteHosts: ['x.example'] } } })).status, 403);
+  assert.equal((await req('PUT', '/api/config', { cookie, body: { pr: { draft: true } } })).status, 200);
+  assert.equal((await req('GET', '/api/state', { cookie: 'kit_device=forged' })).status, 401);
+
+  assert.equal((await req('DELETE', `/api/devices/${paired.json.device.id}`, local)).status, 200);
+  assert.equal((await req('GET', '/api/state', { cookie })).status, 401); // revoked
+  assert.equal((await req('GET', '/api/state', local)).json.viewer.remote, false);
 });

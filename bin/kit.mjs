@@ -10,7 +10,7 @@ import { newProject } from '../lib/new.mjs';
 import { loadConfig, report, sync } from '../lib/sync.mjs';
 import { uninstall } from '../lib/uninstall.mjs';
 
-const BOOL = new Set(['dry', 'force', 'help', 'quick', 'backlog', 'no-open', 'write']);
+const BOOL = new Set(['dry', 'force', 'help', 'quick', 'backlog', 'no-open', 'write', 'no-serve']);
 const [cmd = 'help', ...rest] = process.argv.slice(2);
 const flags = {};
 const pos = [];
