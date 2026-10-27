@@ -4,6 +4,12 @@ Each release bumps `version` in both `package.json` and `kit.config.json` and ad
 `kit lint` fails when the two versions differ or when this file has no section for the current one.
 Synced repos compare their `.kit/manifest.json` version against `kit.config.json` (`kit doctor`).
 
+## [0.3.1] - 2026-10-27
+
+### Fixed
+
+- Hub on Windows: CLIs installed by npm are `.cmd` shims (`claude.cmd` wraps `claude.exe`), and the hub spawned them without a shell, so every Claude stage failed with ENOENT. `run()` now resolves a shim to the `.exe` or `.js` it wraps and keeps the arguments exact (no cmd.exe quoting of `PowerShell(git * push*)`-style rules). The 0.3.0 tests used a `.mjs` stub and never started the real binary.
+
 ## [0.3.0] - 2026-10-27
 
 Everything below is opt-in: no stage agent, test stage, evidence, publish, notify, cleanup or import command runs unless a repo or the hub config sets it, and a repo with none of these fields runs exactly as in 0.2.1 (local commit, human review, `gh pr create`). The Import and Notify buttons only appear when their command is configured.
