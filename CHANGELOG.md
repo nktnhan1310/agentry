@@ -4,6 +4,25 @@ Each release bumps `version` in both `package.json` and `kit.config.json` and ad
 `kit lint` fails when the two versions differ or when this file has no section for the current one.
 Synced repos compare their `.kit/manifest.json` version against `kit.config.json` (`kit doctor`).
 
+## [0.3.0] - 2026-10-27
+
+Everything below is opt-in: no stage agent, test stage, evidence, publish, notify, cleanup or import command runs unless a repo or the hub config sets it, and a repo with none of these fields runs exactly as in 0.2.1 (local commit, human review, `gh pr create`). The Import and Notify buttons only appear when their command is configured.
+
+### Added
+
+- Hub repos can run Claude from a `workspace` (its agents, CLAUDE.md and hooks) with `--add-dir <worktree>`, a prompt fence and an absolute brief path; stage agents via `agents.{plan,code,review,test}` and `engines.<stage>.agent` (`claude --agent`), overridable per ticket.
+- `wiki`: repo notes injected into the plan, code, review and test prompts (12k chars).
+- `test: true`: an agent test stage after review with a `VERDICT: PASS|FAIL|BLOCKED` contract; FAIL loops back to code within `fixIterations`; the report is `test.md`.
+- `worktree` and `branch` patterns, `fetchBase` (branch from a fresh `origin/<base>`, refuse a branch already on origin), and tracker `key`/`url` on tickets (`kit hub add --key`).
+- `commands.cleanup|evidence|publish|notify` with `{ticket} {id} {repo} {worktree} {branch} {base} {dir} {tickets}` placeholders and `KIT_*` env vars. With `publish` the ticket goes straight to `pr_open`; evidence and publish failures resume from that step.
+- Control panel: **Import** from `import.command`, Tests / Evidence (gallery) / Published tabs, a Notify button per ticket and a multi-select on PR cards (one run per notify command), repo **Advanced (JSON)** settings, test engine and stage agents in Settings. CLI: `kit hub import`, `kit hub notify`, `--verify none`.
+
+### Changed
+
+- Headless Claude on Windows gets the `PowerShell` tool next to `Bash` (with only `Bash` listed it had no shell at all); deny rules now also cover `git * push*`-style commands (`git -C <dir> push`) and `git switch`/`stash`/`rebase`.
+- New ticket branches are created with `--no-track`, so a branch cut from `origin/<base>` never pushes to `<base>` by accident.
+- `setup` commands get the same placeholders. Repo info's list of `.wiki` pages is now `wikiFiles` (it shadowed the new `wiki` field).
+
 ## [0.2.1] - 2026-10-27
 
 ### Added

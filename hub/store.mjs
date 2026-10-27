@@ -17,18 +17,22 @@ export const paths = {
 export const DEFAULT_CONFIG = {
   repos: {},
   // Opus writes the brief once per ticket (a sharper brief saves fix loops); sonnet reviews; free opencode codes and fixes.
+  // `agent` = a Claude Code agent (`claude --agent`) for that stage; repo `agents.<stage>` and ticket `agents.<stage>` override it.
   engines: {
-    plan: { tool: 'claude', model: 'opus' },
-    code: { tool: 'opencode', model: '' },
-    review: { tool: 'claude', model: 'sonnet' },
+    plan: { tool: 'claude', model: 'opus', agent: '' },
+    code: { tool: 'opencode', model: '', agent: '' },
+    review: { tool: 'claude', model: 'sonnet', agent: '' },
+    test: { tool: 'claude', model: '', agent: '' },
   },
   limits: { maxParallel: 1, fixIterations: 3, reviewRounds: 1, stageTimeoutMin: 30, claudeBudgetUsd: 1 },
   // Skip the Claude review for tiny diffs; inline the diff so review is usually one turn (no file-read round trips).
   review: { skipUnderLines: 20, inlineDiffChars: 30000 },
   pr: { draft: false },
+  // A command that prints a JSON array of tickets to offer in the control panel's Import dialog.
+  import: { command: '' },
   telegram: { token: '', allowedChatIds: [], pairCode: '' },
   ntfy: { server: 'https://ntfy.sh', topic: '' },
-  ui: { host: '127.0.0.1', port: 7878 },
+  ui: { host: '127.0.0.1', port: 7878, notifyLabel: 'Notify' },
 };
 
 export const STATUSES = ['backlog', 'ready', 'running', 'needs_info', 'review', 'approved', 'pr_open', 'failed', 'rejected', 'done'];
@@ -81,19 +85,30 @@ export function listTickets(filter = {}) {
     .sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
 }
 
+// A tracker key reaches shell commands through {ticket}, so only plain key characters are allowed.
+export const KEY_RE = /^[A-Za-z0-9._-]+$/;
+export const ticketKey = (t) => t.key || t.id;
+// "{ticket}/{repo}" → values; unknown {names} stay as they are (shell braces, JSON).
+export const fill = (tpl, vars) => String(tpl).replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined ? String(vars[k]) : m));
+
 export const normId = (id) => (/^\d+$/.test(String(id)) ? `T${id}` : String(id).toUpperCase());
 
 // mode "quick": no Claude plan — the ticket text itself is the brief for opencode (zero Claude tokens if the diff is small).
-export function createTicket({ repo, title, description = '', status = 'ready', mode = 'full' }) {
+// key/url: the ticket in an external tracker; agents: per-stage agent overrides (e.g. from an import's routing).
+export function createTicket({ repo, title, description = '', status = 'ready', mode = 'full', key = '', url = '', agents = {} }) {
   const cfg = loadConfig();
-  if (!cfg.repos[repo]) throw new Error(`unknown repo "${repo}". Known: ${Object.keys(cfg.repos).join(', ') || 'none (kit hub repo add <path>)'}`);
+  const r = cfg.repos[repo];
+  if (!r) throw new Error(`unknown repo "${repo}". Known: ${Object.keys(cfg.repos).join(', ') || 'none (kit hub repo add <path>)'}`);
+  if (key && !KEY_RE.test(key)) throw new Error(`ticket key "${key}" may only contain letters, digits, ".", "_" and "-"`);
+  if (key && listTickets({ repo }).some((x) => x.key === key && !['rejected', 'done'].includes(x.status))) throw new Error(`${key} already has an open ticket in ${repo}`);
   const state = loadState();
   const id = `T${state.nextId++}`;
   saveState(state);
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task';
+  const branch = fill(r.branch || 'kit/{id}-{slug}', { id, slug, ticket: key || id, repo });
   const t = {
-    id, repo, title, description, status, mode,
-    resume: 'plan', branch: `kit/${id}-${slug}`, worktree: '', baseSha: '',
+    id, repo, title, description, status, mode, key, url, agents,
+    resume: 'plan', branch, worktree: '', baseSha: '',
     feedback: [], iterations: 0, cost: { claudeUsd: 0 }, pr: '', error: '',
     createdAt: new Date().toISOString(), history: [],
   };

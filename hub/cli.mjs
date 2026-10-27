@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { KIT } from '../lib/util.mjs';
 import { actions } from './actions.mjs';
+import { importCreate, importList, notifyTickets } from './stages.mjs';
 import { daemonPid, serve } from './daemon.mjs';
 import { repoCommands } from './pipeline.mjs';
 import { createTicket, getTicket, listTickets, loadConfig, normId, paths, readText, saveConfig } from './store.mjs';
@@ -14,11 +15,12 @@ import { tg } from './telegram.mjs';
 
 const HELP = `kit hub — local ticket loop (plan → code → verify → review → commit → STOP for your approval)
 
-  setup     init · repo add <path> [--name n] [--base main] [--setup "cmd"] [--verify "a && b"] · repo ls · repo rm <name>
+  setup     init · repo add <path> [--name n] [--base main] [--setup "cmd"] [--verify "a && b" | none] · repo ls · repo rm <name>
             telegram <bot-token> · ntfy [topic] · autostart · config [key] [value]  (e.g. engines.plan.model sonnet)
   daemon    start · down · status · serve (foreground) · logs [n] · ui (open the control panel; starts the daemon)
-  tickets   add <repo|path> "<title>" [--desc "…" | --desc-file f] [--quick] [--backlog] · ls [--status s] [--repo r] · show <id>
+  tickets   add <repo|path> "<title>" [--desc "…" | --desc-file f] [--key KEY-1] [--url u] [--quick] [--backlog] · ls [--status s] [--repo r] · show <id>
             run|stop|approve|reject|done <id> · changes <id> "<text>" · answer <id> "<text>"
+            import (list from import.command) · import <key…> [--backlog] · notify <id…> (repo notify command)
 
   --quick: no Claude plan; opencode works from the ticket text (cheapest, for small changes).
   Data: ${paths.config.replace(/hub\.json$/, '')}  (override with KIT_HUB_DIR)`;
@@ -29,7 +31,7 @@ function defaultBase(path) {
   return spawnSync('git', ['branch', '--show-current'], { cwd: path, encoding: 'utf8' }).stdout.trim() || 'main';
 }
 
-const fmt = (t) => `${t.id.padEnd(5)} ${t.status.padEnd(10)} ${t.repo.padEnd(18).slice(0, 18)} ${t.mode === 'quick' ? '⚡' : ' '} ${t.title}`;
+const fmt = (t) => `${t.id.padEnd(5)} ${t.status.padEnd(10)} ${t.repo.padEnd(18).slice(0, 18)} ${t.mode === 'quick' ? '⚡' : ' '} ${t.key ? `${t.key} · ` : ''}${t.title}`;
 
 export async function hub([cmd = 'help', ...pos], flags) {
   const cfg = loadConfig();
@@ -46,7 +48,7 @@ export async function hub([cmd = 'help', ...pos], flags) {
         const name = flags.name || basename(path);
         cfg.repos[name] = { path: path.replaceAll('\\', '/'), base: flags.base || defaultBase(path) };
         if (flags.setup !== undefined) cfg.repos[name].setup = flags.setup;
-        if (flags.verify) cfg.repos[name].verify = flags.verify.split('&&').map((s) => s.trim()).filter(Boolean);
+        if (flags.verify) cfg.repos[name].verify = flags.verify === 'none' ? [] : flags.verify.split('&&').map((s) => s.trim()).filter(Boolean);
         saveConfig(cfg);
         const c = repoCommands(cfg.repos[name]);
         return `repo "${name}" → ${path} (base ${cfg.repos[name].base})\n  setup:  ${c.setup || '(none)'}\n  verify: ${c.verify.join(' && ') || '(none — add --verify "…")'}`;
@@ -73,8 +75,8 @@ export async function hub([cmd = 'help', ...pos], flags) {
       const descFile = flags['desc-file'];
       const desc = descFile ? readFileSync(descFile, 'utf8') : flags.desc || '';
       if (descFile && /[\\/]\.kit[\\/]handoff[\\/]/.test(resolve(descFile))) rmSync(descFile); // /ticket draft; now stored in the ticket
-      const t = createTicket({ repo, title: title.join(' '), description: desc.trim(), status: flags.backlog ? 'backlog' : 'ready', mode: flags.quick ? 'quick' : 'full' });
-      return `${note}${t.id} ${t.status}${t.mode === 'quick' ? ' (quick)' : ''}: ${t.title}${daemonPid() ? '' : '\n(daemon not running: kit hub start)'}`;
+      const t = createTicket({ repo, title: title.join(' '), description: desc.trim(), status: flags.backlog ? 'backlog' : 'ready', mode: flags.quick ? 'quick' : 'full', key: flags.key || '', url: flags.url || '' });
+      return `${note}${t.key ? `${t.key} ` : ''}${t.id} ${t.status}${t.mode === 'quick' ? ' (quick)' : ''}: ${t.title}${daemonPid() ? '' : '\n(daemon not running: kit hub start)'}`;
     }
     case 'config': {
       // kit hub config engines.plan.model opus   ·   kit hub config (prints, token hidden)
@@ -88,6 +90,15 @@ export async function hub([cmd = 'help', ...pos], flags) {
       saveConfig(cfg);
       return `${key} = ${JSON.stringify(parent[last])}`;
     }
+    case 'import': {
+      if (pos.length) {
+        const r = importCreate(pos, { backlog: !!flags.backlog });
+        return [r.created.length ? `created ${r.created.join(' ')}` : 'created nothing', ...r.skipped.map((x) => `skipped ${x}`)].join('\n');
+      }
+      const list = await importList();
+      return list.map((e) => `${e.key.padEnd(12)} ${e.repo.padEnd(22).slice(0, 22)} ${e.existing ? `(${e.existing}) ` : ''}${e.manual ? `[manual: ${e.manual}] ` : ''}${e.title}`).join('\n') || 'nothing to import';
+    }
+    case 'notify': return (await notifyTickets(pos)).text;
     case 'ls': return listTickets({ status: flags.status, repo: flags.repo }).map(fmt).join('\n') || 'no tickets';
     case 'show': {
       const t = getTicket(normId(pos[0]));

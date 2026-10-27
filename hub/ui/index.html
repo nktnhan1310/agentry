@@ -83,6 +83,9 @@ main { padding: 16px 18px 40px; max-width: 1500px; margin: 0 auto; }
 .card { display: block; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 9px 10px; margin-bottom: 8px; color: var(--text); }
 .card:hover { border-color: var(--accent); text-decoration: none; }
 .card .t { font-weight: 550; margin: 3px 0; }
+.cardw { position: relative; } .nsel { position: absolute; right: 9px; bottom: 7px; margin: 0; } .nsel input { width: auto; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.gallery figure { margin: 0; } .gallery img, .gallery video { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: var(--sunken); }
 .badge { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--sunken); color: var(--muted); border: 1px solid var(--line); }
 .s-running { color: var(--accent); } .s-review, .s-needs_info { color: var(--warn); } .s-failed { color: var(--bad); }
 .s-pr_open, .s-done { color: var(--ok); } .s-approved { color: var(--info); }
@@ -131,6 +134,7 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
   <span class="grow"></span>
   <span id="loop" class="small muted"></span>
   <button id="loopBtn" class="small"></button>
+  <button id="importBtn" style="display:none" onclick="importTickets()" title="Run the import command and pick tickets">⇩ Import</button>
   <button class="primary" onclick="newTicket()">+ New ticket</button>
 </header>
 <main id="view"></main>
@@ -158,35 +162,44 @@ function toast(msg, isErr) {
 const guard = (fn) => async (...a) => { try { return await fn(...a); } catch (e) { toast(e.message, true); } };
 
 let S = null;            // /api/state
-let page = { v: 'board' };
+let page = { v: 'board', sel: new Set() };
 let timer = null;
 
 // ---------------- workflow strip ----------------
-function stages(cfg) {
+// Which optional stages a repo has (test, evidence, publish, notify); the board shows any repo's.
+const repoFlags = (name) => S.repos.find((r) => r.name === name)?.flags || {};
+const anyFlags = () => S.repos.reduce((a, r) => { for (const k in r.flags) a[k] ||= r.flags[k]; return a; }, {});
+const notifyLabel = () => S.config.ui.notifyLabel || 'Notify';
+function stages(cfg, f = anyFlags()) {
   const e = cfg.engines;
-  const m = (x) => `${x.tool}${x.model ? ` · ${x.model}` : ''}`;
-  return [
+  const m = (x) => `${x.tool}${x.agent ? ` · ${x.agent}` : x.model ? ` · ${x.model}` : ''}`;
+  const st = [
     { k: 'setup', n: 'Setup', d: 'install deps', c: 'shell' },
     { k: 'plan', n: 'Plan', d: m(e.plan), c: e.plan.tool },
     { k: 'code', n: 'Code', d: m(e.code), c: e.code.tool },
-    { k: 'verify', n: 'Verify', d: 'your build/tests', c: 'shell' },
+    { k: 'verify', n: 'Verify', d: 'your build check', c: 'shell' },
     { k: 'review', n: 'Review', d: `${m(e.review)} · skip <${cfg.review.skipUnderLines} lines`, c: e.review.tool },
-    { k: 'commit', n: 'Commit', d: 'local branch only', c: 'shell' },
-    { k: 'human', n: 'You review', d: 'test the worktree', c: 'human' },
-    { k: 'pr', n: 'Push + PR', d: 'after you approve', c: 'human' },
   ];
+  if (f.test) st.push({ k: 'test', n: 'Test', d: m(e.test), c: e.test.tool });
+  if (!f.publish) return [...st, { k: 'commit', n: 'Commit', d: 'local branch only', c: 'shell' }, { k: 'human', n: 'You review', d: 'test the worktree', c: 'human' }, { k: 'pr', n: 'Push + PR', d: 'after you approve', c: 'human' }];
+  if (f.evidence) st.push({ k: 'evidence', n: 'Evidence', d: 'repo command', c: 'shell' });
+  st.push({ k: 'publish', n: 'Publish', d: 'commit · push · PR', c: 'shell' });
+  if (f.notify) st.push({ k: 'notify', n: notifyLabel(), d: 'when you click', c: 'human' });
+  return st;
 }
 function flow(cfg, t) {
-  const st = stages(cfg);
+  const st = stages(cfg, t ? repoFlags(t.repo) : undefined);
   const idx = (k) => st.findIndex((s) => s.k === k);
   let now = -1, doneUpTo = -1, stuck = -1;
   if (t) {
     if (t.status === 'running') { now = Math.max(0, idx(t.stage || 'setup')); doneUpTo = now - 1; }
     else if (t.status === 'review') { now = idx('human'); doneUpTo = now - 1; }
     else if (t.status === 'approved') { now = idx('pr'); doneUpTo = now - 1; }
+    else if (t.status === 'pr_open' && idx('notify') >= 0 && !t.notifiedAt) { now = idx('notify'); doneUpTo = now - 1; }
     else if (['pr_open', 'done'].includes(t.status)) doneUpTo = st.length - 1;
     else if (t.status === 'needs_info') { stuck = idx('plan'); doneUpTo = stuck - 1; }
-    else if (t.status === 'failed') { const h = (t.history || []).map((x) => x.text).reverse().find((x) => /^(verify|plan|code|review|setup|commit)/.test(x)) || ''; stuck = Math.max(0, idx((h.match(/^(\w+)/) || [])[1])); doneUpTo = stuck - 1; }
+    else if (t.status === 'failed' && ['evidence', 'publish'].includes(t.resume)) { stuck = Math.max(0, idx(t.resume)); doneUpTo = stuck - 1; }
+    else if (t.status === 'failed') { const h = (t.history || []).map((x) => x.text).reverse().find((x) => /^(verify|plan|code|review|setup|commit|tests)/.test(x)) || ''; stuck = Math.max(0, idx(((h.match(/^(\w+)/) || [])[1] || '').replace('tests', 'test'))); doneUpTo = stuck - 1; }
   }
   return `<div class="flow">${st.map((s, i) => {
     const cls = [s.c, i === now ? 'now' : '', i <= doneUpTo ? 'done' : '', i === stuck ? 'stuck' : '', t && t.mode === 'quick' && s.k === 'plan' ? 'skip' : ''].join(' ');
@@ -211,6 +224,7 @@ function viewBoard() {
     <div class="row" style="margin-bottom:12px">
       <select id="repoF" style="width:auto"><option value="">All repos</option>${repos}</select>
       <span class="muted small">${S.tickets.length} tickets · Claude spend ≈ $${S.tickets.reduce((n, t) => n + t.cost, 0).toFixed(3)}</span>
+      <span class="grow"></span><button id="notifyBtn" class="primary" style="display:none" onclick="notify([...page.sel])"></button>
     </div>
     <div class="cols">${COLS.map(([name, sts]) => {
       let list = ts.filter((t) => sts.includes(t.status));
@@ -218,13 +232,23 @@ function viewBoard() {
       return `<div class="col"><h4><span>${name}</span><span>${list.length}</span></h4>${list.slice().reverse().map(cardHtml).join('') || '<div class="muted small">—</div>'}</div>`;
     }).join('')}</div>`;
   $('#repoF').onchange = (e) => { page.repo = e.target.value; render(); };
+  document.querySelectorAll('.nsel input').forEach((c) => { c.onchange = () => { c.checked ? page.sel.add(c.dataset.id) : page.sel.delete(c.dataset.id); selCount(); }; });
+  selCount();
+}
+// Multi-select on PR cards: one notify run for all picked tickets.
+function selCount() {
+  for (const id of [...page.sel]) if (!S.tickets.some((t) => t.id === id && t.status === 'pr_open')) page.sel.delete(id);
+  const b = $('#notifyBtn');
+  if (b) { b.style.display = page.sel.size ? '' : 'none'; b.textContent = `📣 ${notifyLabel()} (${page.sel.size})`; }
 }
 function cardHtml(t) {
-  return `<a class="card" href="#/ticket/${t.id}">
-    <div class="row small"><b>${t.id}</b><span class="muted">${esc(t.repo)}</span>${t.mode === 'quick' ? '<span class="badge">⚡ quick</span>' : ''}<span class="grow"></span><span class="s-${t.status}">${ICON[t.status]} ${t.status.replace('_', ' ')}${t.stage ? ` · ${t.stage}` : ''}</span></div>
+  const pick = t.status === 'pr_open' && repoFlags(t.repo).notify
+    ? `<label class="nsel" title="Select for ${esc(notifyLabel())}"><input type="checkbox" data-id="${t.id}" ${page.sel.has(t.id) ? 'checked' : ''}></label>` : '';
+  return `<div class="cardw">${pick}<a class="card" href="#/ticket/${t.id}">
+    <div class="row small"><b>${esc(t.key || t.id)}</b>${t.key ? `<span class="muted">${t.id}</span>` : ''}<span class="muted">${esc(t.repo)}</span>${t.notifiedAt ? '<span class="badge">📣</span>' : ''}${t.mode === 'quick' ? '<span class="badge">⚡ quick</span>' : ''}<span class="grow"></span><span class="s-${t.status}">${ICON[t.status]} ${t.status.replace('_', ' ')}${t.stage ? ` · ${t.stage}` : ''}</span></div>
     <div class="t">${esc(t.title)}</div>
     ${t.error && t.status === 'failed' ? `<div class="small" style="color:var(--bad)">${esc(t.error)}</div>` : ''}
-    <div class="small muted">${ago(t.updatedAt)}${t.iterations ? ` · ${t.iterations} iter` : ''}${t.cost ? ` · $${t.cost}` : ''}</div></a>`;
+    <div class="small muted">${ago(t.updatedAt)}${t.iterations ? ` · ${t.iterations} iter` : ''}${t.cost ? ` · $${t.cost}` : ''}</div></a></div>`;
 }
 
 // ---------------- ticket ----------------
@@ -243,17 +267,22 @@ function actionsFor(t) {
     needs_info: [b('reject', 'Reject', 'danger')],
     review: [b('approve', '✅ Approve → push + PR', 'primary'), `<button onclick="page.tab='changes';drawTicket()">🔁 Request changes</button>`, b('replan', 'Re-plan'), b('reject', 'Reject', 'danger')],
     failed: [b('run', '🔁 Retry', 'primary'), b('replan', 'Re-plan'), b('reject', 'Reject', 'danger')],
-    pr_open: [t.pr ? `<a href="${esc(t.pr)}" target="_blank"><button class="primary">🔗 Open PR</button></a>` : '', `<button onclick="page.tab='changes';drawTicket()">🔁 Changes</button>`, b('done', '✔ Done')],
+    pr_open: [t.pr ? `<a href="${esc(t.pr)}" target="_blank"><button class="primary">🔗 Open PR</button></a>` : '',
+      repoFlags(t.repo).notify ? `<button class="primary" onclick="notify([T.id])">📣 ${esc(notifyLabel())}${t.notifiedAt ? ' again' : ''}</button>` : '',
+      `<button onclick="page.tab='changes';drawTicket()">🔁 Changes</button>`, b('done', '✔ Done')],
   }[t.status] || [];
 }
 function drawTicket() {
   const t = T;
-  const tabs = [['plan', 'Plan'], ...(t.status === 'needs_info' || t.files.questions ? [['questions', 'Questions']] : []), ['result', 'Result'], ['diff', `Diff${t.diffChars ? '' : ' (none)'}`], ['logs', `Logs (${t.logs.length})`], ['ticket', 'Ticket'], ['history', 'History'],
+  const tabs = [['plan', 'Plan'], ...(t.status === 'needs_info' || t.files.questions ? [['questions', 'Questions']] : []), ['result', 'Result'], ['diff', `Diff${t.diffChars ? '' : ' (none)'}`],
+    ...(t.files.test ? [['tests', 'Tests']] : []), ...(t.evidence.length ? [['evidence', `Evidence (${t.evidence.length})`]] : []),
+    ...(t.files.comment || t.files.prBody ? [['publish', 'Published']] : []),
+    ['logs', `Logs (${t.logs.length})`], ['ticket', 'Ticket'], ['history', 'History'],
     ...(['review', 'pr_open'].includes(t.status) ? [['changes', 'Request changes']] : [])];
   if (!tabs.some(([k]) => k === page.tab)) page.tab = 'plan';
   $('#view').innerHTML = `
     <div class="row"><a href="#/board">← Board</a></div>
-    <div class="row" style="margin:10px 0 4px"><h2>${t.id} · ${esc(t.title)}</h2><span class="badge s-${t.status}">${ICON[t.status]} ${t.status.replace('_', ' ')}${t.stage ? ` · ${t.stage}` : ''}</span>${t.mode === 'quick' ? '<span class="badge">⚡ quick</span>' : ''}</div>
+    <div class="row" style="margin:10px 0 4px"><h2>${t.key ? `${t.url ? `<a href="${esc(t.url)}" target="_blank">${esc(t.key)}</a>` : esc(t.key)} · ` : ''}${t.id} · ${esc(t.title)}</h2>${t.notifiedAt ? `<span class="badge">📣 ${esc(notifyLabel())} ${ago(t.notifiedAt)}</span>` : ''}<span class="badge s-${t.status}">${ICON[t.status]} ${t.status.replace('_', ' ')}${t.stage ? ` · ${t.stage}` : ''}</span>${t.mode === 'quick' ? '<span class="badge">⚡ quick</span>' : ''}</div>
     <div class="small muted" style="margin-bottom:12px">${esc(t.repo)} · branch <code>${esc(t.branch)}</code> · iterations ${t.iterations} · Claude ≈ $${t.cost.claudeUsd}${t.pr ? ` · <a href="${esc(t.pr)}" target="_blank">${esc(t.pr)}</a>` : ''}</div>
     ${flow(S.config, t)}
     <div class="row">${actionsFor(t).join('')}</div>
@@ -293,6 +322,18 @@ function drawTab() {
   } else if (page.tab === 'ticket') {
     el.innerHTML = `<div class="box"><b>${esc(t.title)}</b><pre style="margin-top:6px">${esc(t.description || '(no description)')}</pre></div>
       ${t.feedback.length ? `<h3>Change requests</h3>${t.feedback.map((f, i) => `<div class="box" style="margin-bottom:6px"><span class="muted small">round ${i + 2}</span><pre>${esc(f)}</pre></div>`).join('')}` : ''}`;
+  } else if (page.tab === 'tests') {
+    el.innerHTML = `<p class="small muted">Written by the test stage${S.config.engines.test.agent ? ` (${esc(S.config.engines.test.agent)})` : ''}; the first line is the verdict.</p><div class="box"><pre>${esc(t.files.test)}</pre></div>`;
+  } else if (page.tab === 'evidence') {
+    const src = (f) => `/api/tickets/${t.id}/evidence?path=${encodeURIComponent(f.path)}`;
+    const media = t.evidence.filter((f) => /^(image|video)\//.test(f.type));
+    const other = t.evidence.filter((f) => !/^(image|video)\//.test(f.type));
+    el.innerHTML = `${media.length ? `<div class="gallery">${media.map((f) => `<figure>${f.type.startsWith('video/') ? `<video controls preload="metadata" src="${src(f)}"></video>` : `<a href="${src(f)}" target="_blank"><img loading="lazy" src="${src(f)}" alt="${esc(f.path)}"></a>`}<figcaption class="small muted">${esc(f.path)}</figcaption></figure>`).join('')}</div>` : ''}
+      ${other.length ? `<h3>Files</h3><div class="row">${other.map((f) => f.type ? `<button class="small" onclick="showEvidence(${js(f.path)})">${esc(f.path)}</button>` : `<a class="small" href="${src(f)}">${esc(f.path)} ⇩</a>`).join('')}</div><pre id="evText" class="box" style="margin-top:8px;display:none"></pre>` : ''}`;
+  } else if (page.tab === 'publish') {
+    el.innerHTML = `<div class="row small" style="margin-bottom:8px">${t.pr ? `PR: <a href="${esc(t.pr)}" target="_blank">${esc(t.pr)}</a>` : ''}${t.comment ? ` · comment: <a href="${esc(t.comment)}" target="_blank">${esc(t.comment)}</a>` : ''}</div>
+      ${t.files.comment ? `<h3>Ticket comment</h3><div class="box"><pre>${esc(t.files.comment)}</pre></div>` : ''}
+      ${t.files.prBody ? `<h3>PR description</h3><div class="box"><pre>${esc(t.files.prBody)}</pre></div>` : ''}`;
   } else if (page.tab === 'history') {
     el.innerHTML = `<div class="history">${t.history.slice().reverse().map((h) => `<div><span class="muted">${new Date(h.at).toLocaleString()}</span> — ${esc(h.text)}</div>`).join('')}</div>`;
   } else if (page.tab === 'changes') {
@@ -325,6 +366,17 @@ const act = guard(async (a, text) => {
   page.tab = a === 'changes' || a === 'answer' ? 'history' : page.tab;
   await refresh(); drawTicket();
 });
+const showEvidence = guard(async (path) => {
+  const res = await fetch(`/api/tickets/${T.id}/evidence?path=${encodeURIComponent(path)}`);
+  const o = $('#evText'); o.style.display = ''; o.textContent = await res.text();
+});
+const notify = guard(async (ids) => {
+  const again = ids.filter((id) => S.tickets.find((t) => t.id === id)?.notifiedAt).length;
+  if (!confirm(`${notifyLabel()}: ${ids.length} ticket(s)${again ? ` (${again} already notified)` : ''}?`)) return;
+  const r = await api('POST', 'notify', { ids });
+  toast(`${notifyLabel()}: ${r.ok ? 'done' : 'failed (see the ticket history)'}`, !r.ok);
+  page.sel.clear(); await refresh(); render();
+});
 const saveBrief = guard(async () => { T = await api('PUT', `tickets/${T.id}/brief`, { text: $('#brief').value }); toast('plan saved'); drawTicket(); });
 
 // ---------------- new ticket ----------------
@@ -349,6 +401,30 @@ function newTicket() {
   });
   dlg.showModal(); $('#nTitle').focus();
 }
+
+// ---------------- import (runs the configured import command) ----------------
+const importTickets = guard(async () => {
+  toast('running the import command…');
+  const { items } = await api('POST', 'import', {});
+  const row = (e) => `<tr><td><input type="checkbox" class="imp" value="${esc(e.key)}" style="width:auto" ${e.manual || e.existing ? 'disabled' : ''}></td>
+    <td><b>${e.url ? `<a href="${esc(e.url)}" target="_blank">${esc(e.key)}</a>` : esc(e.key)}</b><div class="small muted">${esc(e.repo)}</div></td>
+    <td>${esc(e.title)}<div class="small muted">${Object.entries(e.agents).filter(([, a]) => a).map(([s, a]) => `${s}: ${esc(a)}`).join(' · ')}</div>
+      ${e.manual ? `<div class="small b-modified">manual: ${esc(e.manual)}</div>` : ''}${e.existing ? `<div class="small muted">already ${esc(e.existing)}</div>` : ''}</td></tr>`;
+  $('#dlgForm').innerHTML = `<h2>Import tickets</h2>
+    ${items.length ? `<table>${items.map(row).join('')}</table>` : '<p class="muted">Nothing to import.</p>'}
+    <div class="row" style="margin-top:8px"><label style="margin:0;color:var(--text)"><input type="checkbox" id="impBacklog" style="width:auto"> Put in backlog (don't start yet)</label></div>
+    <div class="row" style="margin-top:16px;justify-content:flex-end"><button value="cancel" formnovalidate>Cancel</button><button class="primary" value="ok">Create</button></div>`;
+  const dlg = $('#dlg');
+  dlg.onclose = guard(async () => {
+    const keys = [...document.querySelectorAll('.imp:checked')].map((x) => x.value);
+    if (dlg.returnValue !== 'ok' || !keys.length) return;
+    const r = await api('POST', 'import', { keys, backlog: $('#impBacklog').checked });
+    toast(r.created.length ? `created ${r.created.join(' ')}` : 'nothing created', !r.created.length);
+    r.skipped.forEach((s) => toast(s, true));
+    await refresh(); render();
+  });
+  dlg.showModal();
+});
 
 // ---------------- editor (shared by repos + kit) ----------------
 function editorHtml(f, saveLabel) {
@@ -393,10 +469,13 @@ function drawRepo() {
       <h3>Loop settings</h3>
       <div class="grid3">
         <div><label>Base branch</label><input id="rBase" value="${esc(R.base || '')}"></div>
-        <div><label>Setup command <span class="muted">(empty = auto)</span></label><input id="rSetup" value="${esc(R.setup ?? '')}" placeholder="${esc(R.commands.setup || 'none')}"></div>
-        <div><label>Verify commands <span class="muted">(one per line; empty = auto)</span></label><textarea id="rVerify" rows="2" placeholder="${esc(R.commands.verify.join('\n') || 'none detected')}">${esc((R.verify || []).join('\n'))}</textarea></div>
+        <div><label>Setup command <span class="muted">(empty = auto)</span></label><input id="rSetup" value="${esc(R.setup ?? '')}" placeholder="${esc(R.resolved.setup || 'none')}"></div>
+        <div><label>Verify commands <span class="muted">(one per line; empty = auto)</span></label><textarea id="rVerify" rows="2" placeholder="${esc(R.resolved.verify.join('\n') || 'none detected')}">${esc((R.verify || []).join('\n'))}</textarea>
+          <label style="margin:2px 0 0;color:var(--text)"><input type="checkbox" id="rNoVerify" style="width:auto" ${R.verify && !R.verify.length ? 'checked' : ''}> no build check</label></div>
       </div>
-      <div class="row" style="margin-top:8px"><button class="primary small" onclick="saveRepo()">Save</button><span class="small muted">In use → setup: <code>${esc(R.commands.setup || '—')}</code> · verify: <code>${esc(R.commands.verify.join(' && ') || '—')}</code></span>
+      <label>Advanced (JSON) <span class="muted">workspace · wiki · worktree · branch · fetchBase · test · agents {plan code review test} · commands {cleanup evidence publish notify}; placeholders {ticket} {id} {repo} {worktree} {branch} {base} {dir}</span></label>
+      <textarea id="rAdv" rows="9" spellcheck="false">${esc(JSON.stringify(advanced(R), null, 2))}</textarea>
+      <div class="row" style="margin-top:8px"><button class="primary small" onclick="saveRepo()">Save</button><span class="small muted">In use → setup: <code>${esc(R.resolved.setup || '—')}</code> · verify: <code>${esc(R.resolved.verify.join(' && ') || '—')}</code></span>
         <span class="grow"></span><button class="small danger" onclick="removeRepo()">Remove from hub</button></div>
 
       <h3>Kit in this repo</h3>
@@ -406,16 +485,21 @@ function drawRepo() {
       ${installed ? `<table style="margin-top:10px">${installed}</table>` : ''}
       <div class="grid2" style="margin-top:6px">
         <div><h3>Local overrides (.kit/local)</h3><div class="small">${fileLinks(R.local)}</div></div>
-        <div><h3>Memory &amp; root files</h3><div class="small">${fileLinks([...R.roots, ...R.wiki])}</div></div>
+        <div><h3>Memory &amp; root files</h3><div class="small">${fileLinks([...R.roots, ...R.wikiFiles])}</div></div>
       </div>
     </div>
     <div class="panel" id="repoEd" style="margin-top:14px;display:none"></div>
   </div></div>`;
 }
 const addRepo = guard(async () => { const r = await api('POST', 'repos', { path: $('#addPath').value.trim() }); toast(r.text); await refresh(); viewRepos(S.repos.at(-1)?.name); });
+const ADV_KEYS = ['workspace', 'wiki', 'worktree', 'branch', 'fetchBase', 'test', 'agents', 'commands'];
+const advanced = (r) => Object.fromEntries(ADV_KEYS.filter((k) => r[k] !== undefined).map((k) => [k, r[k]]));
 const saveRepo = guard(async () => {
   const lines = $('#rVerify').value.split('\n').map((s) => s.trim()).filter(Boolean);
-  R = await api('PUT', `repos/${encodeURIComponent(R.name)}`, { base: $('#rBase').value.trim(), setup: $('#rSetup').value.trim() || null, verify: lines.length ? lines : null });
+  let adv;
+  try { adv = JSON.parse($('#rAdv').value.trim() || '{}'); } catch (e) { throw new Error(`Advanced: ${e.message}`); }
+  R = await api('PUT', `repos/${encodeURIComponent(R.name)}`, { base: $('#rBase').value.trim(), setup: $('#rSetup').value.trim() || null, verify: $('#rNoVerify').checked ? [] : lines.length ? lines : null, advanced: adv });
+  await refresh();
   toast('saved'); drawRepo();
 });
 const removeRepo = guard(async () => { if (!confirm(`Remove ${R.name} from the hub? (files are not touched)`)) return; await api('DELETE', `repos/${encodeURIComponent(R.name)}`); await refresh(); location.hash = '#/repos'; R = null; viewRepos(); });
@@ -465,12 +549,17 @@ function viewSettings() {
   const c = S.config;
   const eng = (k, label) => `<div><label>${label}</label><div class="row" style="flex-wrap:nowrap">
       <select id="e_${k}_tool" style="width:110px"><option ${c.engines[k].tool === 'claude' ? 'selected' : ''}>claude</option><option ${c.engines[k].tool === 'opencode' ? 'selected' : ''}>opencode</option></select>
-      <input id="e_${k}_model" list="models" value="${esc(c.engines[k].model)}" placeholder="default"></div></div>`;
+      <input id="e_${k}_model" list="models" value="${esc(c.engines[k].model)}" placeholder="default"></div>
+      <input id="e_${k}_agent" value="${esc(c.engines[k].agent || '')}" placeholder="agent (optional)" style="margin-top:4px"></div>`;
   const num = (sec, k, label) => `<div><label>${label}</label><input type="number" id="n_${sec}_${k}" value="${c[sec][k]}"></div>`;
   $('#view').innerHTML = `<div class="panel" style="max-width:880px">
     <h2>Settings</h2><p class="small muted">Stored in ~/.kit-hub/hub.json. Applies to the next stage that starts.</p>
     <datalist id="models"><option>opus</option><option>sonnet</option><option>haiku</option><option>opencode/big-pickle</option></datalist>
-    <h3>Engines</h3><div class="grid3">${eng('plan', 'Plan (once per ticket)')}${eng('code', 'Code + fixes')}${eng('review', 'Review')}</div>
+    <h3>Engines</h3><p class="small muted">An agent is a Claude Code agent name (<code>claude --agent</code>); a repo's or ticket's agents override it.</p>
+    <div class="grid3">${eng('plan', 'Plan (once per ticket)')}${eng('code', 'Code + fixes')}${eng('review', 'Review')}${eng('test', 'Test (repos with test on)')}</div>
+    <h3>Import &amp; notify</h3><div class="grid2">
+      <div><label>Import command <span class="muted">(prints a JSON list of tickets)</span></label><input id="impCmd" value="${esc(c.import.command)}" placeholder="off"></div>
+      <div><label>Notify button label</label><input id="notifyLabel" value="${esc(c.ui.notifyLabel || '')}" placeholder="Notify"></div></div>
     <h3>Limits</h3><div class="grid3">${num('limits', 'maxParallel', 'Tickets in parallel (1 per repo)')}${num('limits', 'fixIterations', 'Verify-fix attempts')}${num('limits', 'reviewRounds', 'Review fix rounds')}
       ${num('limits', 'stageTimeoutMin', 'Stage timeout (min)')}${num('limits', 'claudeBudgetUsd', 'Max $ per Claude call')}${num('review', 'skipUnderLines', 'Skip review under N lines')}</div>
     <h3>Pull requests &amp; notifications</h3>
@@ -480,10 +569,11 @@ function viewSettings() {
     <div class="row" style="margin-top:16px"><button class="primary" onclick="saveSettings()">Save</button></div></div>`;
 }
 const saveSettings = guard(async () => {
-  const e = (k) => ({ tool: $(`#e_${k}_tool`).value, model: $(`#e_${k}_model`).value.trim() });
+  const e = (k) => ({ tool: $(`#e_${k}_tool`).value, model: $(`#e_${k}_model`).value.trim(), agent: $(`#e_${k}_agent`).value.trim() });
   const n = (sec, k) => Number($(`#n_${sec}_${k}`).value);
   S.config = await api('PUT', 'config', {
-    engines: { plan: e('plan'), code: e('code'), review: e('review') },
+    engines: { plan: e('plan'), code: e('code'), review: e('review'), test: e('test') },
+    import: { command: $('#impCmd').value.trim() }, ui: { notifyLabel: $('#notifyLabel').value.trim() },
     limits: { maxParallel: n('limits', 'maxParallel'), fixIterations: n('limits', 'fixIterations'), reviewRounds: n('limits', 'reviewRounds'), stageTimeoutMin: n('limits', 'stageTimeoutMin'), claudeBudgetUsd: n('limits', 'claudeBudgetUsd') },
     review: { skipUnderLines: n('review', 'skipUnderLines') }, pr: { draft: $('#prDraft').checked }, ntfy: { topic: $('#ntfyTopic').value.trim() },
   });
@@ -496,6 +586,7 @@ async function refresh() {
   const p = S.daemon.paused;
   $('#loop').innerHTML = `<span class="dot ${p ? 'paused' : 'on'}"></span>loop ${p ? 'paused' : 'running'} · ${S.tickets.filter((t) => t.status === 'running').length} active`;
   $('#loopBtn').textContent = p ? '▶ Resume loop' : '⏸ Pause loop';
+  $('#importBtn').style.display = S.config.import.command ? '' : 'none'; // optional: only with an import command
 }
 $('#loopBtn').onclick = guard(async () => { await api('POST', 'loop', { paused: !S.daemon.paused }); await refresh(); toast(S.daemon.paused ? 'loop paused (running tickets finish)' : 'loop resumed'); });
 

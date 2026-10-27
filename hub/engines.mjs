@@ -1,21 +1,42 @@
 // Engine adapters: each returns { ok, text, tail, costUsd }.
 import { run } from './proc.mjs';
 
-// Token saving: `--tools` loads only these tool definitions and `--strict-mcp-config` skips MCP servers.
-// Measured: ~22.6k → ~6.1k context tokens per call, re-sent on every turn.
-const READ_TOOLS = 'Read,Grep,Glob';
-const WRITE_TOOLS = 'Read,Grep,Glob,Edit,Write,Bash';
-const DENY = ['Bash(git push:*)', 'Bash(git commit:*)', 'Bash(git reset:*)', 'Bash(git checkout:*)', 'Bash(rm -rf:*)'];
+// Headless Claude on Windows exposes its shell as `PowerShell`, not `Bash` (measured: with only Bash
+// listed, the session had no shell at all). Both are listed there, each with the same deny rules.
+const shells = (platform) => (platform === 'win32' ? ['Bash', 'PowerShell'] : ['Bash']);
+// `git * push*` also catches `git -C <worktree> push`, which a plain prefix rule misses.
+const GIT_DENY = ['push', 'commit', 'reset', 'checkout', 'switch', 'stash', 'rebase'];
+const deny = (sh) => sh.flatMap((s) => [...GIT_DENY.flatMap((g) => [`${s}(git ${g}*)`, `${s}(git * ${g}*)`]), `${s}(rm -rf*)`, `${s}(Remove-Item*-Recurse*)`]);
 
-async function claude(prompt, { cwd, model, write, log, timeoutMin, ticketId, budgetUsd }) {
+/**
+ * Token saving: `--tools` loads only these tool definitions and `--strict-mcp-config` skips MCP servers
+ * (measured ~22.6k → ~6.1k context tokens per call, re-sent on every turn).
+ * mode: read (plan, review) · write (code) · run (test: shell, no edits).
+ */
+export function claudeArgs({ mode = 'read', model, budgetUsd, agent, addDirs = [], platform = process.platform }) {
+  const sh = shells(platform);
+  const tools = { read: ['Read', 'Grep', 'Glob'], write: ['Read', 'Grep', 'Glob', 'Edit', 'Write', ...sh], run: ['Read', 'Grep', 'Glob', ...sh] }[mode];
   const args = ['-p', '--output-format', 'json', '--no-session-persistence', '--strict-mcp-config',
-    '--tools', write ? WRITE_TOOLS : READ_TOOLS,
-    '--permission-mode', write ? 'acceptEdits' : 'dontAsk',
-    '--allowedTools', ...(write ? ['Bash'] : ['Read', 'Grep', 'Glob']), '--disallowedTools', ...DENY];
+    '--tools', tools.join(','),
+    '--permission-mode', mode === 'read' ? 'dontAsk' : 'acceptEdits',
+    '--allowedTools', ...(mode === 'read' ? tools : sh), '--disallowedTools', ...deny(sh)];
+  if (agent) args.push('--agent', agent);
+  for (const d of addDirs) args.push('--add-dir', d);
   if (model) args.push('--model', model);
   if (budgetUsd) args.push('--max-budget-usd', String(budgetUsd));
+  return args;
+}
+
+// KIT_CLAUDE_BIN swaps the binary (tests use a .mjs stub run by node).
+function claudeBin(args) {
+  const bin = process.env.KIT_CLAUDE_BIN || 'claude';
+  return /\.m?js$/.test(bin) ? [process.execPath, [bin, ...args]] : [bin, args];
+}
+
+async function claude(prompt, { cwd, model, write, mode, agent, addDirs, log, timeoutMin, ticketId, budgetUsd }) {
+  const [cmd, args] = claudeBin(claudeArgs({ mode: mode || (write ? 'write' : 'read'), model, budgetUsd, agent, addDirs }));
   // Prompt via stdin: no shell quoting issues, no command-line length limit.
-  const r = await run('claude', args, { cwd, log, timeoutMin, ticketId, input: prompt });
+  const r = await run(cmd, args, { cwd, log, timeoutMin, ticketId, input: prompt });
   let j = {};
   try { j = JSON.parse(r.out.slice(r.out.indexOf('{'))); } catch { /* non-JSON failure */ }
   return { ok: r.code === 0 && !j.is_error, text: (j.result || '').trim(), tail: r.tail, costUsd: j.total_cost_usd || 0 };

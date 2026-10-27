@@ -25,7 +25,7 @@ const btn = (text, data) => ({ text, callback_data: data });
 
 export function card(t) {
   const lines = [
-    `${ICON[t.status] || ''} <b>${t.id}</b> · ${esc(t.repo)} · <i>${t.status}${t.stage ? ` (${t.stage})` : ''}</i>`,
+    `${ICON[t.status] || ''} <b>${t.key ? `${esc(t.key)} · ` : ''}${t.id}</b> · ${esc(t.repo)} · <i>${t.status}${t.stage ? ` (${t.stage})` : ''}</i>`,
     `<b>${esc(t.title)}</b>`,
   ];
   if (t.status === 'needs_info') lines.push('', esc(clip(readText(t.id, 'questions.md'), 1500)));

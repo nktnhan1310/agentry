@@ -1,6 +1,6 @@
 // Local control panel (http://127.0.0.1:<ui.port>): tickets, plans, diffs, logs, repos, kit sources, settings.
 // Served by the daemon. No deps; localhost only; mutations need the x-kit-ui header (blocks cross-site requests).
-import { cpSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { cpSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { basename, join, relative, resolve } from 'node:path';
 import { doctor } from '../lib/doctor.mjs';
@@ -10,6 +10,8 @@ import { isDir, KIT, lineCount, parseFm, read, readJson, sha, walk, write } from
 import { actions } from './actions.mjs';
 import { hub } from './cli.mjs';
 import { repoCommands } from './pipeline.mjs';
+import { importCreate, importList, notifyTickets } from './stages.mjs';
+import { applyAdvanced, MEDIA, ticketDetail, ticketSummary } from './views.mjs';
 import { createTicket, getTicket, listTickets, loadConfig, loadState, normId, readText, saveConfig, saveState, ticketFile, updateTicket, writeText } from './store.mjs';
 
 const UI = join(KIT, 'hub', 'ui', 'index.html');
@@ -17,7 +19,8 @@ const stripAnsi = (s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '');
 
 class HttpError extends Error { constructor(code, msg) { super(msg); this.code = code; } }
 const bad = (msg) => { throw new HttpError(400, msg); };
-
+// A file response (evidence) instead of JSON.
+class Raw { constructor(buf, type, attach) { this.buf = buf; this.type = type; this.attach = attach; } }
 // Resolve a relative path inside root; reject traversal.
 function inside(root, rel) {
   const p = resolve(root, rel || '');
@@ -28,19 +31,6 @@ function inside(root, rel) {
 
 function publicConfig(cfg) {
   return { ...cfg, telegram: { paired: cfg.telegram.allowedChatIds.length, enabled: !!cfg.telegram.token } };
-}
-
-function ticketSummary(t) {
-  return { id: t.id, repo: t.repo, title: t.title, status: t.status, stage: t.stage || '', mode: t.mode, iterations: t.iterations,
-    cost: t.cost?.claudeUsd || 0, pr: t.pr, error: (t.error || '').split('\n')[0].slice(0, 160), updatedAt: t.updatedAt, cancel: !!t.cancel };
-}
-
-function ticketDetail(id) {
-  const t = getTicket(normId(id));
-  const dir = ticketFile(t.id, 'logs');
-  const logs = existsSync(dir) ? readdirSync(dir).map((n) => { const s = statSync(join(dir, n)); return { name: n.replace(/\.log$/, ''), size: s.size, mtime: s.mtimeMs }; }).sort((a, b) => a.mtime - b.mtime) : [];
-  const files = Object.fromEntries(['brief.md', 'questions.md', 'worker.md', 'review.md', 'summary.md'].map((f) => [f.replace('.md', ''), readText(t.id, f)]));
-  return { ...t, files, diffChars: readText(t.id, 'diff.patch').length, logs };
 }
 
 // ---- kit catalog ---------------------------------------------------------------------------------
@@ -99,12 +89,12 @@ function repoInfo(name) {
     const override = local.some((f) => f.startsWith(`.kit/local/${isPack ? 'packs' : g.kind}/${kitName}`));
     return { ...g, name: kitName, installedAs: g.name, kind: isPack ? 'packs' : g.kind, status, tools: [...new Set(g.files.map((f) => f.tool))], override };
   }).sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name));
-  const wiki = isDir(join(path, '.wiki')) ? walk(join(path, '.wiki')).filter((f) => f.endsWith('.md')).map((f) => `.wiki/${f}`) : [];
+  const wikiFiles = isDir(join(path, '.wiki')) ? walk(join(path, '.wiki')).filter((f) => f.endsWith('.md')).map((f) => `.wiki/${f}`) : [];
   const roots = ['AGENTS.md', 'CLAUDE.md', '.kit/config.json'].filter((f) => existsSync(join(path, f)));
   let cmds = { setup: '', verify: [] };
   try { cmds = repoCommands(r); } catch { /* repo moved */ }
-  return { name, ...r, exists: existsSync(path), commands: cmds, kit: m ? { version: m.kit, latest: loadKitConfig().version, syncedAt: m.syncedAt, tools: m.tools, packs: m.packs } : null,
-    installed, local, wiki, roots, tickets: listTickets({ repo: name }).length };
+  return { name, ...r, exists: existsSync(path), resolved: cmds, kit: m ? { version: m.kit, latest: loadKitConfig().version, syncedAt: m.syncedAt, tools: m.tools, packs: m.packs } : null,
+    installed, local, wikiFiles, roots, tickets: listTickets({ repo: name }).length };
 }
 
 const REPO_WRITABLE = /^(\.kit\/local\/|\.wiki\/|\.kit\/config\.json$|AGENTS\.md$|CLAUDE\.md$)/;
@@ -138,17 +128,31 @@ async function route(req, url) {
     const cfg = loadConfig();
     const { daemonPid } = await import('./daemon.mjs');
     return { daemon: { pid: daemonPid() || process.pid, paused: !!loadState().paused }, config: publicConfig(cfg), kitVersion: loadKitConfig().version,
-      repos: Object.entries(cfg.repos).map(([n, r]) => ({ name: n, path: r.path, base: r.base })), tickets: listTickets().map(ticketSummary) };
+      repos: Object.entries(cfg.repos).map(([n, r]) => ({ name: n, path: r.path, base: r.base,
+        flags: { test: !!r.test, evidence: !!r.commands?.evidence, publish: !!r.commands?.publish, notify: !!r.commands?.notify } })),
+      tickets: listTickets().map(ticketSummary) };
   }
   if (a === 'loop' && m === 'POST') { const s = loadState(); s.paused = !!B.paused; saveState(s); return { paused: s.paused }; }
+  if (a === 'import' && m === 'POST') return B.keys ? importCreate([].concat(B.keys), { backlog: !!B.backlog }) : { items: await importList() };
+  if (a === 'notify' && m === 'POST') {
+    if (!Array.isArray(B.ids) || !B.ids.length) bad('ids required');
+    return notifyTickets(B.ids);
+  }
 
   if (a === 'tickets') {
     if (!b && m === 'POST') {
       if (!B.title?.trim()) bad('title required');
-      return ticketSummary(createTicket({ repo: B.repo, title: B.title.trim(), description: (B.description || '').trim(), status: B.backlog ? 'backlog' : 'ready', mode: B.quick ? 'quick' : 'full' }));
+      return ticketSummary(createTicket({ repo: B.repo, title: B.title.trim(), description: (B.description || '').trim(), status: B.backlog ? 'backlog' : 'ready', mode: B.quick ? 'quick' : 'full', key: (B.key || '').trim(), url: (B.url || '').trim() }));
     }
     if (b && !c && m === 'GET') return ticketDetail(b);
     if (b && c === 'diff') return { text: readText(normId(b), 'diff.patch') };
+    if (b && c === 'evidence' && m === 'GET') {
+      const rel = q.get('path');
+      const p = inside(ticketFile(normId(b), 'evidence'), rel);
+      if (!existsSync(p) || isDir(p)) throw new HttpError(404, 'no such evidence file');
+      const type = MEDIA[rel.split('.').pop().toLowerCase()];
+      return new Raw(readFileSync(p), type || 'application/octet-stream', !type);
+    }
     if (b && c === 'logs' && d) {
       const p = inside(ticketFile(normId(b), 'logs'), `${d}.log`);
       const lines = existsSync(p) ? stripAnsi(readFileSync(p, 'utf8')).split(/\r?\n/) : [];
@@ -184,6 +188,7 @@ async function route(req, url) {
       if (B.base !== undefined) r.base = B.base;
       if (B.setup !== undefined) { if (B.setup === null) delete r.setup; else r.setup = B.setup; }
       if (B.verify !== undefined) { if (B.verify === null) delete r.verify; else r.verify = B.verify; }
+      if (B.advanced !== undefined) applyAdvanced(r, B.advanced);
       saveConfig(cfg);
       return repoInfo(b);
     }
@@ -215,7 +220,7 @@ async function route(req, url) {
     const cfg = loadConfig();
     if (m === 'GET') return publicConfig(cfg);
     if (m === 'PUT') {
-      for (const k of ['engines', 'limits', 'review', 'pr', 'ntfy', 'ui']) if (B[k]) cfg[k] = { ...cfg[k], ...B[k] };
+      for (const k of ['engines', 'limits', 'review', 'pr', 'ntfy', 'ui', 'import']) if (B[k]) cfg[k] = { ...cfg[k], ...B[k] };
       saveConfig(cfg);
       return publicConfig(cfg);
     }
@@ -237,7 +242,12 @@ export function startUi(log = console.log) {
       if (url.pathname === '/' || url.pathname === '/index.html') return send(200, readFileSync(UI, 'utf8'), 'text/html');
       if (!url.pathname.startsWith('/api/')) return send(404, { error: 'not found' });
       if (req.method !== 'GET' && req.headers['x-kit-ui'] !== '1') return send(403, { error: 'missing x-kit-ui header' });
-      send(200, await route(req, url));
+      const out = await route(req, url);
+      if (!(out instanceof Raw)) return send(200, out);
+      // Evidence files: sandboxed (no script runs even if a file is mislabelled), unknown types download.
+      res.writeHead(200, { 'content-type': out.type, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox',
+        ...(out.attach ? { 'content-disposition': 'attachment' } : {}) });
+      res.end(out.buf);
     } catch (e) {
       send(e.code && e.code >= 400 && e.code < 600 ? e.code : 400, { error: String(e.message || e) });
     }
