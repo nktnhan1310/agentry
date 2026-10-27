@@ -396,6 +396,13 @@ async function api(method, path, body) {
   return j;
 }
 
+function toast(msg, isErr) {
+  const d = document.createElement('div'); d.textContent = msg; if (isErr) d.className = 'e';
+  $('#toast').append(d); setTimeout(() => d.remove(), isErr ? 7000 : 3000);
+}
+// Defined before any top-level `const x = guard(...)`: a const used earlier throws and blanks the whole UI.
+const guard = (fn) => async (...a) => { try { return await fn(...a); } catch (e) { toast(e.message, true); } };
+
 // Remote viewers (phone via Tailscale) pair once with a code created on the PC; the server then sets a device cookie.
 let PAIRING = false;
 const deviceName = () => (/Android/i.test(navigator.userAgent) ? 'Android phone' : /iPhone|iPad/i.test(navigator.userAgent) ? 'iPhone' : 'Browser');
@@ -414,11 +421,6 @@ const doPair = guard(async () => {
   await api('POST', 'pair', { code: $('#pairCode').value, name: $('#pairName').value });
   location.reload();
 });
-function toast(msg, isErr) {
-  const d = document.createElement('div'); d.textContent = msg; if (isErr) d.className = 'e';
-  $('#toast').append(d); setTimeout(() => d.remove(), isErr ? 7000 : 3000);
-}
-const guard = (fn) => async (...a) => { try { return await fn(...a); } catch (e) { toast(e.message, true); } };
 
 let S = null;            // /api/state
 let P = null;            // /api/prs
