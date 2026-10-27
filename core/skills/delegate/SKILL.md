@@ -1,5 +1,6 @@
 ---
 name: delegate
+requires: delegate
 description: Hand a fully specified coding task to an external CLI agent (opencode default, codex optional) to save Claude tokens. Use for delegable plan tasks or mechanical multi-file edits.
 ---
 # Delegate

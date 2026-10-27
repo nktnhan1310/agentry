@@ -17,7 +17,7 @@ export function render(src, { emit, cfg }) {
     emit(`.opencode/agents/${a.name}.md`, `${head}${perm.join('\n')}\n---\n${fix(a.body)}`);
   }
   for (const c of src.commands.filter(forTool('opencode'))) {
-    emit(`.opencode/commands/${c.name}.md`, fm({ description: c.data.description }) + fix(c.body));
+    emit(`.opencode/commands/${c.file?.opencode || c.name}.md`, fm({ description: c.data.description }) + fix(c.body));
   }
   if (skillsRoot !== '.claude/skills') {
     for (const s of src.skills) for (const f of s.files) emit(`${skillsRoot}/${s.name}/${f.rel}`, fix(f.content));

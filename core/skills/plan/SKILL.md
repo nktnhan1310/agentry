@@ -18,7 +18,7 @@ Risks: <data loss | migration | security | perf | none> → <mitigation>
 Reuse: <existing helpers/patterns by path>
 
 ## Tasks
-- [ ] T1 <imperative title> · size S|M · delegable yes|no
+- [ ] T1 <imperative title> · size S|M{{#delegate}} · delegable yes|no{{/delegate}}
   Files: <paths to create/modify>
   Change: <precise steps: signatures, behaviour, edge cases; no full code>
   Verify: `<command>` → <expected result>
@@ -27,7 +27,7 @@ Reuse: <existing helpers/patterns by path>
 Rules
 - Tasks take 2–15 minutes each and are ordered so every task leaves the build green.
 - Tests belong to the task that changes behaviour, never to a final "add tests" task.
-- `delegable yes` only when Files + Change + Verify are unambiguous and the task is not security-sensitive.
-- Put the riskiest assumption in an early task so it fails fast.
+{{#delegate}}- `delegable yes` only when Files + Change + Verify are unambiguous and the task is not security-sensitive.
+{{/delegate}}- Put the riskiest assumption in an early task so it fails fast.
 - Keep the plan ≤150 lines. If it's bigger, split it into phases with separate plan files.
 - Add one line to `.wiki/log.md`: `YYYY-MM-DD | plan | <title> | plans/<file>`.

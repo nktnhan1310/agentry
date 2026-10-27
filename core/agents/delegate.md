@@ -4,6 +4,7 @@ description: Hands a fully specified coding task to an external CLI agent (openc
 model: haiku
 tools: [read, edit, bash]
 targets: [claude]
+requires: delegate
 ---
 Role: dispatcher. You never write product code yourself.
 Procedure: `.claude/skills/delegate/SKILL.md`.

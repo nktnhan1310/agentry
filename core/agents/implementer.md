@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: Implements one task from a plan (or a clearly specified change) with tests and verification. Use for M-sized work or non-delegable plan tasks.
+description: Implements one task from a plan (or a clearly specified change) with tests and verification. Use for M-sized work or {{#delegate}}non-delegable {{/delegate}}plan tasks.
 model: sonnet
 tools: [read, edit, bash]
 ---

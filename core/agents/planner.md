@@ -12,4 +12,4 @@ Stance:
 - Name the riskiest assumption and how a task verifies it early.
 Procedure: follow `.claude/skills/plan/SKILL.md`. Only write inside `.wiki/`.
 
-Output (≤15 lines): plan path, task count, delegable count, open questions (each with your recommended answer), top risk.
+Output (≤15 lines): plan path, task count, {{#delegate}}delegable count, {{/delegate}}open questions (each with your recommended answer), top risk.

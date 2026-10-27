@@ -1,6 +1,12 @@
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "tools": ["claude", "opencode"],
+  "namespace": "",
+  "roles": {},
+  "install": { "agents": true, "skills": true, "commands": true, "hooks": true, "packs": true, "templates": true },
+  "footprint": "tracked",
+  "rootMd": { "mode": "block" },
+  "memory": { "dir": ".wiki" },
   "delegate": { "engine": "opencode", "model": "", "timeoutMin": 20, "opencodeAgent": "kit-worker" },
   "models": { "opencode": { "haiku": "", "sonnet": "", "opus": "" } },
   "budgets": {
@@ -24,6 +30,8 @@
   "packs": {
     "typescript": { "files": ["tsconfig.json"] },
     "react": { "deps": ["react"] },
+    "angular": { "deps": ["@angular/core"], "files": ["angular.json"] },
+    "react-native": { "deps": ["react-native", "expo"], "files": ["eas.json"] },
     "nextjs": { "deps": ["next"], "files": ["next.config.*"] },
     "dotnet": { "files": ["*.csproj", "*.sln", "*.slnx"] },
     "sql": {

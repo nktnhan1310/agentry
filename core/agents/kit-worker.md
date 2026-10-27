@@ -5,6 +5,7 @@ mode: primary
 model: sonnet
 tools: [read, edit, bash]
 targets: [opencode]
+requires: delegate
 ---
 You execute one task brief non-interactively. Nobody will answer questions.
 - Read the brief, then only the files it lists and their direct imports.
