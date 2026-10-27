@@ -59,10 +59,29 @@ core/skills/     route plan execute tdd debug verify review security-audit deleg
 core/commands/   spec impl fix audit wiki(opencode)
 core/hooks/      root-md-guard (CLAUDE/AGENTS.md ≤10 lines), secret-guard (.env/key reads)
 core/templates/  AGENTS.md, CLAUDE.md, .wiki seed            (written only if missing)
-packs/           typescript react nextjs dotnet sql python supabase   (auto-detected)
+packs/           typescript react nextjs angular react-native dotnet sql python supabase   (auto-detected)
 adapters/        claude → .claude/   opencode → .opencode/   codex → .agents/skills/
 ```
 Canonical agent frontmatter: `name, description, model (haiku|sonnet|opus), tools [read, edit, bash, web], targets [claude, opencode], mode`.
+
+## Existing projects (own agents, skills, rules)
+```bash
+kit adopt D:/my-repo            # read-only: proposes a .kit/config.json, with a reason per setting
+kit adopt D:/my-repo --write    # write it, then preview with `kit diff`, then `kit sync`
+kit uninstall D:/my-repo        # remove everything sync installed; edited files and .kit/config.json stay
+```
+| Setting | Effect |
+|---|---|
+| `namespace: "ak"` | installs `ak-planner`, `ak-route/`, `/ak:spec`, `ak-secret-guard.mjs`; every cross-reference is rewritten to match |
+| `roles: {"reviewer": "code-reviewer", "tdd": "tdd"}` | the kit uses the project's own agent/skill instead of installing its copy |
+| `install: {"hooks": ["secret-guard"], "commands": false, "templates": false}` | per kind (`agents skills commands hooks packs templates`): `true`, `false`, or a list of names; settings entries for dropped hooks/skills are dropped too |
+| `footprint: "untracked"` | kit files are hidden via a managed block in `.git/info/exclude`, settings go to `.claude/settings.local.json`; `git status` stays clean |
+| `rootMd: {"mode": "warn"}` | CLAUDE.md/AGENTS.md line guard: `block` (default), `warn` (adds context, never blocks), `off` (hook not installed) |
+| `delegate: {"engine": "none"}` | Claude-only: no `delegate` agent/skill or `kit-worker`, and the plan/route/execute text drops opencode and `delegable` (delegable tasks go to `implementer`). `kit adopt` suggests it when neither opencode nor codex is on PATH |
+| `memory: {"dir": "docs/ai"}` | where the wiki lives; seeds and every `.wiki` reference move with it |
+- A file that exists in the repo but was not installed by the kit is **never overwritten**, not even with `--force`; sync lists it.
+- Settings: sync records which entries it added and removes only those (on uninstall, or when a hook/skill is dropped). Repos synced before 0.2.0 have no record, so entries merged back then stay.
+- Your own packs: `.kit/local/packs/<name>/SKILL.md`. Installed when it has no detection rule; give it `packs.<name>` in `.kit/config.json` to detect it instead.
 
 ## Per-repo config
 - `.kit/config.json` is deep-merged over `kit.config.json`, e.g. `{"tools":["claude","opencode","codex"],"delegate":{"model":"opencode/big-pickle"}}`.
@@ -71,6 +90,10 @@ Canonical agent frontmatter: `name, description, model (haiku|sonnet|opus), tool
 
 ## Token rules (checked by `kit lint` / `kit doctor`)
 CLAUDE.md/AGENTS.md ≤10 lines · descriptions ≤200 chars · agent body ≤40 lines · SKILL.md ≤150 · pack ≤80 · wiki index ≤80, page ≤200, log ≤200 (archived) · agent replies ≤20–30 lines · hooks print nothing on success.
+
+Conditional text in kit sources: `{{#delegate}}…{{/delegate}}` is kept only with an external engine, `{{^delegate}}…{{/delegate}}` only without one; a source with `requires: delegate` in its frontmatter is skipped without one. `kit lint` rejects unknown flags and unbalanced markers.
+
+Releasing: bump `version` in both `package.json` and `kit.config.json` and add a section to [CHANGELOG.md](CHANGELOG.md); `kit lint` fails until all three agree.
 
 ## Hub: background ticket loop + phone control
 Tickets live locally in `~/.kit-hub` (never in a repo). A daemon works each ticket in its own git worktree and **stops before push/PR**:

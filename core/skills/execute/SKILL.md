@@ -6,8 +6,8 @@ description: Execute an approved plan from .wiki/plans/ task by task, routing ea
 Set the plan `Status: in progress`. For each unchecked task, in order:
 1. **Pick an executor**
    - S-sized and quick → do it inline.
-   - `delegable yes` → `delegate` agent (opencode; saves Claude tokens).
-   - Otherwise → `implementer` agent. Pass the plan path + task id, not the plan text.
+{{#delegate}}   - `delegable yes` → `delegate` agent (opencode; saves Claude tokens).
+{{/delegate}}   - {{#delegate}}Otherwise{{/delegate}}{{^delegate}}Everything else{{/delegate}} → `implementer` agent. Pass the plan path + task id, not the plan text.
    - Tasks with disjoint Files and no ordering dependency may run in parallel.
 2. **Verify yourself.** Run the task's Verify command. Never trust a worker's "done".
 3. **On failure**, give one fix attempt with the error excerpt (≤20 lines). Still failing → stop, report, and ask.

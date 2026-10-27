@@ -67,7 +67,7 @@ const KIT_WRITABLE = /^(core\/|packs\/|kit\.config\.json$)/;
 // ---- per-repo kit status -------------------------------------------------------------------------
 function classify(p) {
   const tool = p.startsWith('.claude/') ? 'claude' : p.startsWith('.opencode/') ? 'opencode' : p.startsWith('.agents/') ? 'codex' : '';
-  let m = p.match(/\/(agents|commands)\/([^/]+)\.md$/);
+  let m = p.match(/\/(agents|commands)\/(.+)\.md$/);
   if (m) return { kind: m[1], name: m[2], tool };
   m = p.match(/\/skills\/([^/]+)\//);
   if (m) return { kind: 'skills', name: m[1], tool };
@@ -94,9 +94,10 @@ function repoInfo(name) {
   const rank = { ok: 0, modified: 1, missing: 2 };
   const installed = [...groups.values()].map((g) => {
     const status = g.files.reduce((s, f) => (rank[f.status] > rank[s] ? f.status : s), 'ok');
-    const isPack = g.kind === 'skills' && (m?.packs || []).includes(g.name);
-    const override = local.some((f) => f.startsWith(`.kit/local/${g.kind}/${g.name}`));
-    return { ...g, kind: isPack ? 'packs' : g.kind, status, tools: [...new Set(g.files.map((f) => f.tool))], override };
+    const kitName = m?.names?.[g.name] || g.name; // installed name may carry a namespace
+    const isPack = g.kind === 'skills' && (m?.packs || []).includes(kitName);
+    const override = local.some((f) => f.startsWith(`.kit/local/${isPack ? 'packs' : g.kind}/${kitName}`));
+    return { ...g, name: kitName, installedAs: g.name, kind: isPack ? 'packs' : g.kind, status, tools: [...new Set(g.files.map((f) => f.tool))], override };
   }).sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name));
   const wiki = isDir(join(path, '.wiki')) ? walk(join(path, '.wiki')).filter((f) => f.endsWith('.md')).map((f) => `.wiki/${f}`) : [];
   const roots = ['AGENTS.md', 'CLAUDE.md', '.kit/config.json'].filter((f) => existsSync(join(path, f)));
@@ -111,10 +112,9 @@ const REPO_WRITABLE = /^(\.kit\/local\/|\.wiki\/|\.kit\/config\.json$|AGENTS\.md
 function override(name, kind, item) {
   const repo = loadConfig().repos[name];
   if (!repo) throw new HttpError(404, `no repo ${name}`);
-  const localKind = kind === 'packs' ? 'skills' : kind;
-  const src = { agents: `core/agents/${item}.md`, commands: `core/commands/${item}.md`, hooks: `core/hooks/${item}`, skills: `core/skills/${item}`, packs: `packs/${item}` }[kind];
+  const src ={ agents: `core/agents/${item}.md`, commands: `core/commands/${item}.md`, hooks: `core/hooks/${item}`, skills: `core/skills/${item}`, packs: `packs/${item}` }[kind];
   if (!src || !existsSync(join(KIT, src))) bad(`no kit source for ${kind}/${item}`);
-  const destRel = `.kit/local/${localKind}/${basename(src)}`;
+  const destRel = `.kit/local/${kind}/${basename(src)}`;
   const dest = inside(repo.path, destRel);
   if (!existsSync(dest)) cpSync(join(KIT, src), dest, { recursive: true });
   return { path: isDir(dest) ? `${destRel}/SKILL.md` : destRel };
