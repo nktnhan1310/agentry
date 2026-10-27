@@ -1,6 +1,6 @@
 {
   "name": "agentry",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Portable, token-lean agents/skills/commands for Claude Code, OpenCode and Codex, synced into any repo.",
   "license": "MIT",
   "repository": "github:nktnhan1310/agentry",

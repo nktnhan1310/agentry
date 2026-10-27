@@ -124,6 +124,28 @@ Start a ticket from anywhere (all go to the same queue):
 Models: `kit hub config engines.plan.model opus|sonnet` (also `engines.review.model`, `engines.code.model`, e.g. `opencode/big-pickle`).
 Test a ticket locally before approving: the card shows its worktree path.
 
+### Workspace repos: own agents, a test stage, publishing through your scripts
+Optional per-repo fields (Repos → Advanced, or `hub.json`) for teams that already have agents, review rules and a PR process. A repo without them works as above.
+```jsonc
+"my-api": {
+  "path": "D:/work/my-api", "base": "staging", "fetchBase": true,   // branch from a freshly fetched origin/staging
+  "workspace": "D:/work",                     // Claude starts here (its agents, CLAUDE.md, hooks) with --add-dir <worktree>
+  "wiki": ["D:/work/notes/my-api.md"],       // injected into the plan/code/review/test prompts (12k chars max)
+  "worktree": "D:/work-wt/{ticket}/{repo}", "branch": "{ticket}",
+  "verify": ["dotnet build -warnaserror"],    // build check only; [] or `--verify none` = no check
+  "test": true,                               // agent test stage after review: VERDICT PASS | FAIL (back to code) | BLOCKED
+  "agents": { "code": "backend-developer", "review": "code-reviewer", "test": "test-runner" },
+  "commands": {
+    "cleanup": "…",                           // before `git worktree remove`; if it fails the worktree stays
+    "evidence": "…",                          // writes screenshots / reports into {dir}/evidence/
+    "publish": "…",                           // commits, pushes, opens the PR, comments; prints pr=<url> / comment=<url>
+    "notify": "…"                             // the ticket's Notify button and multi-select; {tickets} = all picked keys
+  }
+}
+```
+Placeholders (also exported as `KIT_TICKET`, `KIT_WORKTREE`, …): `{ticket}` (tracker key, else hub id) `{id}` `{repo}` `{worktree}` `{branch}` `{base}` `{dir}` (the hub's ticket folder: brief, review, `test.md`, `evidence/`; publish may add `comment.md` and `pr-body.md`, shown under **Published**). Keys are limited to `A-Z a-z 0-9 . _ -`.
+With `publish`, the loop goes code → verify → review → test → evidence → publish → `pr_open` without a human gate; a failed evidence or publish step retries from that step. Agents: ticket > repo `agents` > `engines.<stage>.agent`. **Import** (header) runs `import.command`, which prints `[{key, title, description, repo, url, agents, manual}]`; entries with `manual` are listed but cannot be picked. On Windows the headless shell tool is `PowerShell`, so write and test stages get both shells, each with the same git deny rules (`git push*` and `git * push*`, …).
+
 Token saving in the loop: `--tools` + `--strict-mcp-config` cut each headless Claude call from ~22.6k to ~6.1k context tokens; Opus only for the single plan call, Sonnet for review; all coding and fixing runs on opencode; `--quick` tickets use no Claude at all unless the diff is ≥20 lines; `limits.claudeBudgetUsd` caps every call.
 
 ## Notes

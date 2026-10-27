@@ -1,22 +1,23 @@
-// Ticket pipeline: worktree → setup → plan → code ⇄ verify/fix → review ⇄ fix → local commit → STOP (status review).
-// Push + PR only happen later, in approve(), after a human says so.
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+// Ticket pipeline: worktree → setup → plan → code ⇄ verify/fix → review ⇄ fix → [test ⇄ fix], then
+//   with a publish command: [evidence] → publish (the command commits, pushes, opens the PR) → pr_open;
+//   without: local commit → STOP (status review); push + PR happen later in approve(), after a human says so.
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { detectCommands, scan } from '../lib/detect.mjs';
 import { loadConfig as loadKitConfig } from '../lib/sync.mjs';
+import { outputs, runCommand, vars, verdict } from './commands.mjs';
 import { engine, shell } from './engines.mjs';
 import { git, run } from './proc.mjs';
-import { prompts } from './prompts.mjs';
-import { event, getTicket, loadConfig, paths, readText, saveTicket, ticketFile, updateTicket, writeText } from './store.mjs';
+import { context, prompts } from './prompts.mjs';
+import { event, getTicket, loadConfig, readText, saveTicket, ticketFile, updateTicket, writeText } from './store.mjs';
+import { ensureWorktree, Stop } from './worktree.mjs';
+
+export { cleanup } from './worktree.mjs';
 
 const logFile = (t, name) => ticketFile(t.id, `logs/${name}.log`);
 const tailN = (s, n) => s.split('\n').slice(-n).join('\n');
 
-class Stop extends Error {
-  constructor(status, msg) { super(msg); this.status = status; }
-}
-
-// Commands for setup/verify: explicit repo config wins, else detected from the repo.
+// Commands for setup/verify: explicit repo config wins, else detected from the repo. `verify: []` = no build check.
 export function repoCommands(repoCfg) {
   const kit = loadKitConfig(repoCfg.path);
   const info = scan(repoCfg.path, kit);
@@ -33,28 +34,6 @@ export function repoCommands(repoCfg) {
   }
   const verify = repoCfg.verify || [...det.build, ...det.test];
   return { setup, verify };
-}
-
-async function ensureWorktree(t, repo) {
-  if (t.worktree && existsSync(t.worktree)) return;
-  const wt = join(paths.worktrees, t.repo, t.id);
-  mkdirSync(join(wt, '..'), { recursive: true });
-  const base = repo.base || 'main';
-  const head = await git(repo.path, ['rev-parse', base]);
-  if (head.code) throw new Stop('failed', `base "${base}" not found in ${repo.path}`);
-  const exists = (await git(repo.path, ['rev-parse', '--verify', '--quiet', t.branch])).code === 0;
-  const r = await git(repo.path, exists ? ['worktree', 'add', wt, t.branch] : ['worktree', 'add', '-b', t.branch, wt, base], { log: logFile(t, 'git') });
-  if (r.code) throw new Stop('failed', `worktree add failed:\n${tailN(r.tail, 10)}`);
-  // Keep task briefs out of commits even if the repo's .gitignore lacks it (shared by all worktrees).
-  const common = (await git(repo.path, ['rev-parse', '--path-format=absolute', '--git-common-dir'])).out.trim();
-  const exclude = join(common, 'info', 'exclude');
-  const cur = existsSync(exclude) ? readFileSync(exclude, 'utf8') : '';
-  if (!cur.includes('.kit/handoff/')) { mkdirSync(join(exclude, '..'), { recursive: true }); appendFileSync(exclude, `${cur && !cur.endsWith('\n') ? '\n' : ''}.kit/handoff/\n`); }
-  t.worktree = wt;
-  t.baseSha = t.baseSha || head.out.trim();
-  t.setupDone = false;
-  event(t, `worktree ${wt} on ${t.branch}`);
-  saveTicket(t);
 }
 
 async function verify(t, cmds, cfg, n) {
@@ -74,6 +53,9 @@ async function stagedDiff(t) {
   return stat.out.trim();
 }
 
+const summaryOf = (t, verifyReport, stat, review, test) => [`## ${t.key || t.id}: ${t.title}`, '', '### Verify', verifyReport, '', '### Changes', '```', stat, '```', '',
+  ...(test ? ['### Tests', test, ''] : []), '### Review', review || '(skipped)', ''].join('\n');
+
 export async function runPipeline(id, onNotify) {
   const cfg = loadConfig();
   let t = getTicket(id);
@@ -81,93 +63,148 @@ export async function runPipeline(id, onNotify) {
   const step = (text) => { t = getTicket(id); event(t, text); saveTicket(t); };
   const cost = (usd) => { t = getTicket(id); t.cost.claudeUsd = +(t.cost.claudeUsd + usd).toFixed(4); saveTicket(t); };
   const stage = (s) => { t = getTicket(id); t.stage = s; saveTicket(t); };
+  const limits = () => ({ timeoutMin: cfg.limits.stageTimeoutMin, ticketId: t.id });
+  // One engine call for a stage. With a repo workspace, Claude starts there (its agents, rules and
+  // hooks load) and reaches the worktree through --add-dir; the agent comes from ticket > repo > engine.
+  const call = async (name, prompt, mode, logName) => {
+    const e = cfg.engines[name];
+    const isClaude = e.tool === 'claude';
+    const ws = isClaude && repo.workspace;
+    const agent = isClaude ? (t.agents?.[name] ?? repo.agents?.[name] ?? e.agent ?? '') : undefined;
+    const r = await engine(e.tool)(prompt, { cwd: ws ? repo.workspace : t.worktree, addDirs: ws ? [t.worktree] : [], agent: agent || undefined, model: e.model, mode, log: logFile(t, logName), ...limits(), budgetUsd: cfg.limits.claudeBudgetUsd });
+    cost(r.costUsd);
+    return r;
+  };
 
   try {
     if (!repo) throw new Stop('failed', `repo "${t.repo}" not configured`);
     await ensureWorktree(t, repo);
     t = getTicket(id);
     const { setup, verify: verifyCmds } = repoCommands(repo);
+    const publishCmd = repo.commands?.publish;
+    const ctx = context(t, repo);
 
     if (!t.setupDone && setup) {
       stage('setup');
-      const r = await shell(setup, { cwd: t.worktree, log: logFile(t, 'setup'), timeoutMin: cfg.limits.stageTimeoutMin, ticketId: t.id });
+      const r = await runCommand(setup, vars(t, repo), { cwd: t.worktree, log: logFile(t, 'setup'), ...limits() });
       if (r.code) throw new Stop('failed', `setup failed: ${setup}\n${tailN(r.tail, 20)}`);
     }
     t = getTicket(id); t.setupDone = true; saveTicket(t);
 
-    // PLAN
-    const briefPath = join(t.worktree, '.kit', 'handoff', `${t.id}.md`);
-    if (t.mode === 'quick' && !readText(t.id, 'brief.md')) {
-      writeText(t.id, 'brief.md', prompts.quickBrief(t, verifyCmds));
-      t = updateTicket(id, (x) => { x.resume = 'code'; event(x, 'quick mode: ticket used as brief (no plan step)'); });
-    } else if (t.resume === 'plan' || !readText(t.id, 'brief.md')) {
-      stage('plan');
-      const e = cfg.engines.plan;
-      const r = await engine(e.tool)(prompts.plan(t, verifyCmds), { cwd: t.worktree, model: e.model, write: false, log: logFile(t, 'plan'), timeoutMin: cfg.limits.stageTimeoutMin, ticketId: t.id, budgetUsd: cfg.limits.claudeBudgetUsd });
-      cost(r.costUsd);
-      if (!r.ok || !r.text) throw new Stop('failed', `plan step failed:\n${tailN(r.tail, 15)}`);
-      if (/^NEEDS_INFO/.test(r.text)) {
-        writeText(t.id, 'questions.md', r.text.replace(/^NEEDS_INFO\s*/, ''));
-        throw new Stop('needs_info', r.text.replace(/^NEEDS_INFO\s*/, ''));
-      }
-      writeText(t.id, 'brief.md', r.text.replace(/^```(?:markdown)?\n|\n```$/g, '') + '\n');
-      t = updateTicket(id, (x) => { x.resume = 'code'; event(x, 'plan written'); });
-    }
-
-    // CODE ⇄ VERIFY ⇄ REVIEW
-    t = getTicket(id);
-    let extra = t.feedback.length ? `\n## Changes requested by the human reviewer\n${t.feedback.at(-1)}\n` : '';
-    let reviewRounds = 0;
     let verifyReport = '';
     let review = '';
-    for (let i = 0; ; i++) {
-      if (i > cfg.limits.fixIterations + cfg.limits.reviewRounds) throw new Stop('failed', `iteration limit reached; last problem:\n${extra.slice(0, 1500)}`);
-      t = getTicket(id);
-      t.iterations++; saveTicket(t);
-      mkdirSync(join(briefPath, '..'), { recursive: true });
-      writeFileSync(briefPath, readText(t.id, 'brief.md') + extra);
-
-      stage('code');
-      const e = cfg.engines.code;
-      const msg = `Execute the task brief in .kit/handoff/${t.id}.md exactly. Follow its Constraints. Run its Acceptance commands. Never commit or push. Finish with the Report it asks for.`;
-      const r = await engine(e.tool)(e.tool === 'claude' ? prompts.code(t) : msg, { cwd: t.worktree, model: e.model, write: true, log: logFile(t, `code-${t.iterations}`), timeoutMin: cfg.limits.stageTimeoutMin, ticketId: t.id, budgetUsd: cfg.limits.claudeBudgetUsd });
-      cost(r.costUsd);
-      if (!r.ok) throw new Stop('failed', `code step failed (${e.tool}):\n${tailN(r.tail, 15)}`);
-      writeText(t.id, 'worker.md', r.text);
-
-      stage('verify');
-      const v = await verify(t, verifyCmds, cfg, t.iterations);
-      verifyReport = v.report;
-      if (!v.ok) {
-        step(`verify failed (iteration ${t.iterations})`);
-        extra = `\n## Fix (iteration ${t.iterations}): verification failed\nMake these pass. Don't weaken or delete tests unless they are wrong.\n~~~\n${v.failure}\n~~~\n`;
-        continue;
+    let testReport = '';
+    if (!['evidence', 'publish'].includes(t.resume)) {
+      // PLAN
+      const briefPath = join(t.worktree, '.kit', 'handoff', `${t.id}.md`);
+      const brief = repo.workspace ? briefPath.replaceAll('\\', '/') : `.kit/handoff/${t.id}.md`;
+      if (t.mode === 'quick' && !readText(t.id, 'brief.md')) {
+        writeText(t.id, 'brief.md', prompts.quickBrief(t, verifyCmds));
+        t = updateTicket(id, (x) => { x.resume = 'code'; event(x, 'quick mode: ticket used as brief (no plan step)'); });
+      } else if (t.resume === 'plan' || !readText(t.id, 'brief.md')) {
+        stage('plan');
+        const r = await call('plan', prompts.plan(t, verifyCmds, ctx), 'read', 'plan');
+        if (!r.ok || !r.text) throw new Stop('failed', `plan step failed:\n${tailN(r.tail, 15)}`);
+        if (/^NEEDS_INFO/.test(r.text)) {
+          writeText(t.id, 'questions.md', r.text.replace(/^NEEDS_INFO\s*/, ''));
+          throw new Stop('needs_info', r.text.replace(/^NEEDS_INFO\s*/, ''));
+        }
+        writeText(t.id, 'brief.md', r.text.replace(/^```(?:markdown)?\n|\n```$/g, '') + '\n');
+        t = updateTicket(id, (x) => { x.resume = 'code'; event(x, 'plan written'); });
       }
 
-      const stat = await stagedDiff(t);
-      if (!stat) throw new Stop('failed', 'worker made no changes');
-      const numstat = (await git(t.worktree, ['diff', '--cached', '--numstat', t.baseSha])).out;
-      const changed = numstat.split('\n').reduce((n, l) => n + (Number(l.split('\t')[0]) || 0) + (Number(l.split('\t')[1]) || 0), 0);
+      // CODE ⇄ VERIFY ⇄ REVIEW ⇄ TEST
+      t = getTicket(id);
+      let extra = t.feedback.length ? `\n## Changes requested by the human reviewer\n${t.feedback.at(-1)}\n` : '';
+      let reviewRounds = 0;
+      for (let i = 0; ; i++) {
+        if (i > cfg.limits.fixIterations + cfg.limits.reviewRounds) throw new Stop('failed', `iteration limit reached; last problem:\n${extra.slice(0, 1500)}`);
+        t = getTicket(id);
+        t.iterations++; saveTicket(t);
+        mkdirSync(join(briefPath, '..'), { recursive: true });
+        writeFileSync(briefPath, readText(t.id, 'brief.md') + extra);
 
-      if (cfg.limits.reviewRounds > 0 && changed < cfg.review.skipUnderLines) {
-        review = `VERDICT: PASS\n(skipped: ${changed} changed lines < ${cfg.review.skipUnderLines}; verify passed)`;
-      } else if (cfg.limits.reviewRounds > 0) {
-        stage('review');
-        const er = cfg.engines.review;
-        const diff = (await git(t.worktree, ['diff', '--cached', '-U2', t.baseSha])).out;
-        const inline = diff.length <= cfg.review.inlineDiffChars ? diff : '';
-        const rv = await engine(er.tool)(prompts.review(t, stat, inline), { cwd: t.worktree, model: er.model, write: false, log: logFile(t, `review-${t.iterations}`), timeoutMin: cfg.limits.stageTimeoutMin, ticketId: t.id, budgetUsd: cfg.limits.claudeBudgetUsd });
-        cost(rv.costUsd);
-        review = rv.ok ? rv.text : `review step failed:\n${tailN(rv.tail, 10)}`;
-        writeText(t.id, 'review.md', review);
-        if (/^VERDICT:\s*BLOCKING/m.test(review) && reviewRounds < cfg.limits.reviewRounds) {
-          reviewRounds++;
-          step(`review blocking (round ${reviewRounds})`);
-          extra = `\n## Fix: code review found blocking issues\nFix the BLOCKING items only.\n${review}\n`;
+        stage('code');
+        const isClaude = cfg.engines.code.tool === 'claude';
+        const r = await call('code', isClaude ? prompts.code(t, brief, ctx) : `Execute the task brief in ${brief} exactly. Follow its Constraints. Run its Acceptance commands. Never commit or push. Finish with the Report it asks for.`, 'write', `code-${t.iterations}`);
+        if (!r.ok) throw new Stop('failed', `code step failed (${cfg.engines.code.tool}):\n${tailN(r.tail, 15)}`);
+        writeText(t.id, 'worker.md', r.text);
+
+        stage('verify');
+        const v = await verify(t, verifyCmds, cfg, t.iterations);
+        verifyReport = v.report;
+        if (!v.ok) {
+          step(`verify failed (iteration ${t.iterations})`);
+          extra = `\n## Fix (iteration ${t.iterations}): verification failed\nMake these pass. Don't weaken or delete tests unless they are wrong.\n~~~\n${v.failure}\n~~~\n`;
           continue;
         }
+
+        const stat = await stagedDiff(t);
+        if (!stat) throw new Stop('failed', 'worker made no changes');
+        const numstat = (await git(t.worktree, ['diff', '--cached', '--numstat', t.baseSha])).out;
+        const changed = numstat.split('\n').reduce((n, l) => n + (Number(l.split('\t')[0]) || 0) + (Number(l.split('\t')[1]) || 0), 0);
+
+        if (cfg.limits.reviewRounds > 0 && changed < cfg.review.skipUnderLines) {
+          review = `VERDICT: PASS\n(skipped: ${changed} changed lines < ${cfg.review.skipUnderLines}; verify passed)`;
+        } else if (cfg.limits.reviewRounds > 0) {
+          stage('review');
+          const diff = (await git(t.worktree, ['diff', '--cached', '-U2', t.baseSha])).out;
+          const rv = await call('review', prompts.review(t, stat, diff.length <= cfg.review.inlineDiffChars ? diff : '', ctx), 'read', `review-${t.iterations}`);
+          review = rv.ok ? rv.text : `review step failed:\n${tailN(rv.tail, 10)}`;
+          writeText(t.id, 'review.md', review);
+          if (/^VERDICT:\s*BLOCKING/m.test(review) && reviewRounds < cfg.limits.reviewRounds) {
+            reviewRounds++;
+            step(`review blocking (round ${reviewRounds})`);
+            extra = `\n## Fix: code review found blocking issues\nFix the BLOCKING items only.\n${review}\n`;
+            continue;
+          }
+        }
+
+        if (repo.test) {
+          stage('test');
+          const tr = await call('test', prompts.test(t, stat, ctx), 'run', `test-${t.iterations}`);
+          testReport = tr.ok ? tr.text : `VERDICT: BLOCKED\ntest step failed:\n${tailN(tr.tail, 10)}`;
+          writeText(t.id, 'test.md', testReport);
+          const tv = verdict(testReport);
+          if (tv === 'BLOCKED') throw new Stop('failed', `tests could not run:\n${testReport.slice(0, 1500)}`);
+          if (tv === 'FAIL') {
+            step(`tests failed (iteration ${t.iterations})`);
+            extra = `\n## Fix (iteration ${t.iterations}): tests failed\nMake the new failures pass. Don't weaken or delete tests unless they are wrong.\n${testReport}\n`;
+            continue;
+          }
+        }
+        break;
       }
-      break;
+    }
+
+    if (publishCmd) {
+      t = getTicket(id);
+      if (!['evidence', 'publish'].includes(t.resume)) {
+        const stat = await stagedDiff(t);
+        writeText(t.id, 'diff.patch', (await git(t.worktree, ['diff', '--cached', t.baseSha])).out);
+        writeText(t.id, 'summary.md', summaryOf(t, verifyReport, stat, review, testReport));
+        t = updateTicket(id, (x) => { x.resume = 'evidence'; });
+      }
+      if (t.resume === 'evidence' && repo.commands.evidence) {
+        stage('evidence');
+        mkdirSync(ticketFile(t.id, 'evidence'), { recursive: true });
+        const r = await runCommand(repo.commands.evidence, vars(t, repo), { cwd: t.worktree, log: logFile(t, 'evidence'), ...limits() });
+        if (r.code) throw new Stop('failed', `evidence failed:\n${tailN(r.tail, 20)}`);
+        step('evidence captured');
+      }
+      t = updateTicket(id, (x) => { x.resume = 'publish'; });
+      stage('publish');
+      const p = await runCommand(publishCmd, vars(t, repo), { cwd: t.worktree, log: logFile(t, 'publish'), ...limits() });
+      if (p.code) throw new Stop('failed', `publish failed:\n${tailN(p.tail, 20)}`);
+      const o = outputs(p.out);
+      t = updateTicket(id, (x) => {
+        x.status = 'pr_open'; x.stage = ''; x.error = ''; x.resume = 'code';
+        if (o.pr) x.pr = o.pr;
+        if (o.comment) x.comment = o.comment;
+        event(x, `published${o.pr ? `: ${o.pr}` : ''}`);
+      });
+      await onNotify?.(t, 'pr_open');
+      return;
     }
 
     // COMMIT locally (no push).
@@ -178,9 +215,8 @@ export async function runPipeline(id, onNotify) {
     const c = await git(t.worktree, ['commit', '-m', msg], { log: logFile(t, 'git') });
     if (c.code) throw new Stop('failed', `commit failed (hooks?):\n${tailN(c.tail, 15)}`);
     const stat = (await git(t.worktree, ['diff', '--stat', t.baseSha, 'HEAD'])).out.trim();
-    const patch = (await git(t.worktree, ['diff', t.baseSha, 'HEAD'])).out;
-    writeText(t.id, 'diff.patch', patch);
-    writeText(t.id, 'summary.md', [`## ${t.id}: ${t.title}`, '', '### Verify', verifyReport, '', '### Changes', '```', stat, '```', '', '### Review', review || '(skipped)', ''].join('\n'));
+    writeText(t.id, 'diff.patch', (await git(t.worktree, ['diff', t.baseSha, 'HEAD'])).out);
+    writeText(t.id, 'summary.md', summaryOf(t, verifyReport, stat, review, testReport));
 
     t = updateTicket(id, (x) => { x.status = 'review'; x.stage = ''; x.error = ''; event(x, 'ready for human review'); });
     await onNotify?.(t, 'review');
@@ -217,14 +253,4 @@ export async function approve(id, onNotify) {
     t = updateTicket(id, (x) => { x.status = 'review'; x.error = String(e.message); event(x, `approve failed: ${x.error.split('\n')[0]}`); });
   }
   await onNotify?.(t, t.status === 'pr_open' ? 'pr_open' : 'approve_failed');
-}
-
-// Remove worktree (and the local branch if never pushed).
-export async function cleanup(id) {
-  const cfg = loadConfig();
-  const t = getTicket(id);
-  const repo = cfg.repos[t.repo];
-  if (t.worktree && existsSync(t.worktree)) await git(repo.path, ['worktree', 'remove', '--force', t.worktree]);
-  if (!t.pr) await git(repo.path, ['branch', '-D', t.branch]);
-  updateTicket(id, (x) => { x.worktree = ''; event(x, 'worktree removed'); });
 }

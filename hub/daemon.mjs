@@ -28,7 +28,7 @@ async function tick() {
   for (const t of tickets) {
     if (t.status === 'running' && t.cancel) cancel(t.id);
     if (t.status === 'approved' && !active.has(t.id)) { log(`${t.id} approve`); track(t.id, approve(t.id, notify)); }
-    if (['rejected', 'done'].includes(t.status) && t.worktree && !active.has(t.id)) { log(`${t.id} cleanup`); track(t.id, cleanup(t.id)); }
+    if (['rejected', 'done'].includes(t.status) && t.worktree && !t.cleanupFailed && !active.has(t.id)) { log(`${t.id} cleanup`); track(t.id, cleanup(t.id)); }
   }
 
   if (loadState().paused) return;
