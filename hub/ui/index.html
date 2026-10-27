@@ -4,17 +4,27 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>agentry hub</title>
+<script>
+// Apply a saved light/dark choice before first paint (no flash). "auto" = no attribute = follow the OS.
+try { const t = localStorage.getItem('kit-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch { /* storage blocked */ }
+</script>
 <style>
 :root {
+  color-scheme: light dark;
   --bg: #f6f7f9; --panel: #fff; --sunken: #f0f2f5; --line: #e2e5ea; --text: #1d2330; --muted: #6a7282; --accent: #3b5bdb; --accent-ink: #fff;
   --ok: #2b8a3e; --warn: #c27c0e; --bad: #c92a2a; --info: #1971c2; --violet: #7048e8;
   --add-bg: #e6f6ea; --del-bg: #fdecec; --hunk: #6741d9;
   --radius: 8px; --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
 }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+/* Dark tokens: the OS preference unless the user picked light, or an explicit dark choice. */
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #111318; --panel: #181b22; --sunken: #20242d; --line: #2b303b; --text: #e3e6ec; --muted: #8f97a6; --accent: #748ffc; --accent-ink: #0d1020;
+  :root:not([data-theme="light"]) { --bg: #111318; --panel: #181b22; --sunken: #20242d; --line: #2b303b; --text: #e3e6ec; --muted: #8f97a6; --accent: #748ffc; --accent-ink: #0d1020;
     --ok: #51cf66; --warn: #fcc419; --bad: #ff6b6b; --info: #4dabf7; --violet: #9775fa; --add-bg: #12301b; --del-bg: #3a1618; --hunk: #b197fc; }
 }
+:root[data-theme="dark"] { --bg: #111318; --panel: #181b22; --sunken: #20242d; --line: #2b303b; --text: #e3e6ec; --muted: #8f97a6; --accent: #748ffc; --accent-ink: #0d1020;
+  --ok: #51cf66; --warn: #fcc419; --bad: #ff6b6b; --info: #4dabf7; --violet: #9775fa; --add-bg: #12301b; --del-bg: #3a1618; --hunk: #b197fc; }
 * { box-sizing: border-box; }
 body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
 a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
@@ -37,6 +47,10 @@ header .brand { font-weight: 650; }
 nav { display: flex; gap: 2px; }
 nav a { padding: 5px 10px; border-radius: 6px; color: var(--muted); }
 nav a.on { background: var(--sunken); color: var(--text); text-decoration: none; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; padding: 3px 9px; font-size: 12px; background: transparent; color: var(--muted); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: var(--sunken); color: var(--text); }
 .grow { flex: 1; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--muted); margin-right: 6px; }
 .dot.on { background: var(--ok); } .dot.paused { background: var(--warn); }
@@ -111,6 +125,9 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
   <nav id="nav">
     <a href="#/board" data-v="board">Board</a><a href="#/repos" data-v="repos">Repos</a><a href="#/kit" data-v="kit">Kit</a><a href="#/settings" data-v="settings">Settings</a>
   </nav>
+  <div id="theme" class="seg" role="group" aria-label="Color theme">
+    <button data-t="auto" title="Follow the system setting" onclick="setTheme('auto')">Auto</button><button data-t="light" title="Light" aria-label="Light" onclick="setTheme('light')">☀</button><button data-t="dark" title="Dark" aria-label="Dark" onclick="setTheme('dark')">☾</button>
+  </div>
   <span class="grow"></span>
   <span id="loop" class="small muted"></span>
   <button id="loopBtn" class="small"></button>
@@ -513,6 +530,14 @@ async function poll() {
     }
   } catch { $('#loop').innerHTML = '<span class="dot"></span>daemon unreachable'; }
 }
+
+// Light/dark switch in the top bar; the choice is per browser (localStorage), "auto" follows the OS.
+function setTheme(t) {
+  try { t === 'auto' ? localStorage.removeItem('kit-theme') : localStorage.setItem('kit-theme', t); } catch { /* storage blocked: applies until reload */ }
+  if (t === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
+  document.querySelectorAll('#theme button').forEach((b) => { b.classList.toggle('on', b.dataset.t === t); b.setAttribute('aria-pressed', b.dataset.t === t); });
+}
+setTheme(document.documentElement.dataset.theme || 'auto');
 
 window.addEventListener('hashchange', render);
 refresh().then(render);
