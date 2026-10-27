@@ -4,6 +4,12 @@ Each release bumps `version` in both `package.json` and `kit.config.json` and ad
 `kit lint` fails when the two versions differ or when this file has no section for the current one.
 Synced repos compare their `.kit/manifest.json` version against `kit.config.json` (`kit doctor`).
 
+## [0.2.1] - 2026-10-27
+
+### Added
+
+- Control panel: Auto / Light / Dark switch in the top bar, next to the nav links. Auto follows the OS; a choice is remembered per browser and applied before first paint.
+
 ## [0.2.0] - 2026-10-27
 
 ### Added

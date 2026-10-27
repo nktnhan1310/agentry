@@ -20,7 +20,11 @@ test('control panel API: state, guards, tickets, kit catalog', async (t) => {
   const B = `http://127.0.0.1:${port}`;
   const post = (p, body, h = { 'x-kit-ui': '1' }) => fetch(`${B}/api/${p}`, { method: 'POST', headers: { 'content-type': 'application/json', ...h }, body: JSON.stringify(body) });
 
-  assert.match(await (await fetch(B)).text(), /agentry hub/);
+  const html = await (await fetch(B)).text();
+  assert.match(html, /agentry hub/);
+  assert.match(html, /<header>[\s\S]*<nav id="nav">[\s\S]*<\/nav>\s*<div id="theme" class="seg"[\s\S]*data-t="auto"[\s\S]*data-t="light"[\s\S]*data-t="dark"[\s\S]*<\/header>/, 'theme switch sits in the top bar, right after the nav');
+  assert.match(html, /:root\[data-theme="dark"\]/);
+  assert.match(html, /:root:not\(\[data-theme="light"\]\)/);
   const s = await (await fetch(`${B}/api/state`)).json();
   assert.equal(s.repos[0].name, 'web');
   assert.equal(s.config.telegram.token, undefined); // secrets never leave the server
