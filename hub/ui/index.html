@@ -134,7 +134,7 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
   <span class="grow"></span>
   <span id="loop" class="small muted"></span>
   <button id="loopBtn" class="small"></button>
-  <button onclick="importTickets()" title="Run the import command and pick tickets">⇩ Import</button>
+  <button id="importBtn" style="display:none" onclick="importTickets()" title="Run the import command and pick tickets">⇩ Import</button>
   <button class="primary" onclick="newTicket()">+ New ticket</button>
 </header>
 <main id="view"></main>
@@ -586,6 +586,7 @@ async function refresh() {
   const p = S.daemon.paused;
   $('#loop').innerHTML = `<span class="dot ${p ? 'paused' : 'on'}"></span>loop ${p ? 'paused' : 'running'} · ${S.tickets.filter((t) => t.status === 'running').length} active`;
   $('#loopBtn').textContent = p ? '▶ Resume loop' : '⏸ Pause loop';
+  $('#importBtn').style.display = S.config.import.command ? '' : 'none'; // optional: only with an import command
 }
 $('#loopBtn').onclick = guard(async () => { await api('POST', 'loop', { paused: !S.daemon.paused }); await refresh(); toast(S.daemon.paused ? 'loop paused (running tickets finish)' : 'loop resumed'); });
 

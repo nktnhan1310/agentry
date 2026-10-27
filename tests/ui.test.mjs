@@ -24,6 +24,7 @@ test('control panel API: state, guards, tickets, kit catalog', async (t) => {
   assert.match(html, /agentry hub/);
   assert.match(html, /<header>[\s\S]*<nav id="nav">[\s\S]*<\/nav>\s*<div id="theme" class="seg"[\s\S]*data-t="auto"[\s\S]*data-t="light"[\s\S]*data-t="dark"[\s\S]*<\/header>/, 'theme switch sits in the top bar, right after the nav');
   assert.match(html, /:root\[data-theme="dark"\]/);
+  assert.match(html, /<button id="importBtn" style="display:none"/, 'Import is opt-in: hidden until import.command is set');
   assert.match(html, /:root:not\(\[data-theme="light"\]\)/);
   const s = await (await fetch(`${B}/api/state`)).json();
   assert.equal(s.repos[0].name, 'web');
