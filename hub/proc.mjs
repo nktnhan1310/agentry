@@ -1,9 +1,29 @@
 // Child-process runner with log files, tails, timeouts and tree-kill (Windows-safe).
 import { spawn, spawnSync } from 'node:child_process';
-import { createWriteStream, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { createWriteStream, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 const running = new Map(); // ticketId -> Set<ChildProcess>
+
+// npm installs CLIs on Windows as .cmd shims (e.g. claude.cmd → …\claude.exe), and spawn() cannot
+// start a .cmd without a shell (ENOENT). Resolve the shim to the .exe / .js it wraps so arguments
+// stay exact; anything unresolvable is spawned as before.
+const bins = new Map();
+export function resolveBin(cmd, { platform = process.platform, path = process.env.PATH || '' } = {}) {
+  if (platform !== 'win32' || /[\\/]/.test(cmd) || /\.(exe|com)$/i.test(cmd)) return [cmd, []];
+  const key = `${cmd}|${path}`;
+  if (!bins.has(key)) {
+    let out = [cmd, []];
+    for (const dir of path.split(';').filter(Boolean)) {
+      if (existsSync(join(dir, `${cmd}.exe`))) { out = [join(dir, `${cmd}.exe`), []]; break; }
+      const shim = join(dir, `${cmd}.cmd`);
+      const m = existsSync(shim) && readFileSync(shim, 'utf8').match(/"%dp0%\\([^"]+\.(exe|c?js|mjs))"/i);
+      if (m) { out = m[2].toLowerCase() === 'exe' ? [join(dir, m[1]), []] : [process.execPath, [join(dir, m[1])]]; break; }
+    }
+    bins.set(key, out);
+  }
+  return bins.get(key);
+}
 
 export function killTree(child) {
   if (!child?.pid || child.exitCode !== null) return;
@@ -27,7 +47,8 @@ export function run(cmd, args = [], opts = {}) {
     const log = opts.log ? createWriteStream(opts.log, { flags: 'a' }) : null;
     log?.write(`$ ${cmd} ${args.join(' ')}\n`);
     // With a shell, pass one pre-joined command string (Node deprecates args + shell:true).
-    const child = spawn(opts.shell ? [cmd, ...args].join(' ') : cmd, opts.shell ? [] : args, {
+    const [bin, pre] = opts.shell ? [cmd, []] : resolveBin(cmd);
+    const child = spawn(opts.shell ? [cmd, ...args].join(' ') : bin, opts.shell ? [] : [...pre, ...args], {
       cwd: opts.cwd, shell: !!opts.shell, windowsHide: true,
       detached: process.platform !== 'win32',
       env: { ...process.env, ...opts.env },
